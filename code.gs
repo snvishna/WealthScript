@@ -802,8 +802,8 @@ function updateRealEstatePrices() {
   
   if (!apiKey || apiKey === "PASTE_KEY_HERE") return; 
 
-  // NOTE: ZPID table starts at row 16 after Epic 0 added FIRE config at rows 9-12.
-  const propData = configSheet.getRange("A16:B30").getValues();
+  // NOTE: ZPID table starts at row 19 after Epic 0 added FIRE/Currency config.
+  const propData = configSheet.getRange("A19:B35").getValues();
   const properties = [];
   for (let i = 0; i < propData.length; i++) {
     if (propData[i][0] && propData[i][1]) {
@@ -812,6 +812,8 @@ function updateRealEstatePrices() {
   }
 
   const accountNames = sheet.getRange("A1:A100").getValues().flat();
+  const currentValues = sheet.getRange("E1:E100").getValues();
+  let updated = false;
 
   properties.forEach(prop => {
     try {
@@ -829,16 +831,21 @@ function updateRealEstatePrices() {
       if (response.getResponseCode() === 200) {
         const data = JSON.parse(response.getContentText());
         const zestimate = data.property.zestimate; 
-        const targetRow = accountNames.indexOf(prop.name) + 1;
+        const targetRowIdx = accountNames.indexOf(prop.name); // 0-indexed for array
         
-        if (targetRow > 0 && zestimate) {
-          sheet.getRange(targetRow, 5).setValue(zestimate);
+        if (targetRowIdx >= 0 && zestimate) {
+          currentValues[targetRowIdx][0] = zestimate;
+          updated = true;
         }
       }
     } catch (e) {
       Logger.log(`Script crashed on ${prop.name}: ${e}`);
     }
   });
+
+  if (updated) {
+    sheet.getRange("E1:E100").setValues(currentValues);
+  }
 }
 
 /**

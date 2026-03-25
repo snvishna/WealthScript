@@ -12,7 +12,7 @@ It features native multi-currency support (USD, CAD, INR), automated stock/crypt
 * **Smart Tax Calculation:** Automatically separates Capital Gains (taxed only on profit) from Pre-Tax Retirement accounts (taxed on the full balance) based on your provided cost basis.
 * **Live Equity Sync:** Bypasses third-party APIs by using Google's native `GOOGLEFINANCE` engine for bulletproof stock, ETF, and crypto pricing.
 * **Automated Real Estate Pricing:** Integrates with RapidAPI to pull live Zestimates for your properties via a weekly cron job.
-* **Professional Dashboard:** Dark KPI banner with live Net / Gross Worth in USD, CAD, and INR, plus Liquid / Locked / FIRE Progress quick-stats — all generated from code with color-coded asset classes and conditional formatting.
+* **Professional Dashboard:** Dark KPI banner with live Net / Gross Worth in USD and two user-configurable secondary currencies (e.g., CAD, INR) driven directly from the Settings tab. Liquid / Locked / FIRE Progress quick-stats generated from code with color-coded asset classes and conditional formatting.
 * **The Snapshot Engine:** A single click instantly logs your current metrics, parses Liquid vs. Locked assets, and auto-generates a human-readable commentary on what moved your portfolio.
 * **Cash Flow & Burn Rate Pipeline:** A dedicated `💸 Cash Flow & Burn` tab tracks monthly expenses with live KPIs: Average Burn, TTM Expenses, Target FIRE Budget, and Safe Withdrawal Rate.
 * **Dual Disaster Recovery:** Every snapshot silently fires two backups in parallel — a JSON patch to a private **GitHub Gist** (developer-friendly diff history) AND a dated JSON file to **Google Drive** (zero-config, no API key needed).
@@ -55,7 +55,9 @@ It features native multi-currency support (USD, CAD, INR), automated stock/crypt
 | FIRE & Cash Flow | B10 | Target Monthly FIRE Budget (USD) | `$20,000` |
 | FIRE & Cash Flow | B11 | Estimated Monthly Rental Income (USD) | `$0` |
 | FIRE & Cash Flow | B12 | Annual Portfolio Return Rate | `7.00%` |
-| ZPID Mapping | A16:B30 | Property Name → ZPID pairs | sample data |
+| Dashboard Currency | B14 | Secondary Currency (Card 2) | `CAD` |
+| Dashboard Currency | B15 | Secondary Currency (Card 3) | `INR` |
+| ZPID Mapping | A19:B35 | Property Name → ZPID pairs | sample data |
 
 ### Phase 4: Enable Native Tables & Grouping (Crucial Step)
 Google Sheets' "Tables" feature is brand new and cannot be fully automated via script yet. You must enable it manually to get the visual asset grouping:
