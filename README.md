@@ -1,6 +1,8 @@
-# Net Worth Tracker 2.0 💰
+# WealthScript 💰
 
-A highly durable, automated, and professional-grade Net Worth Tracker built directly into Google Sheets via Google Apps Script. 
+A highly durable, automated, and professional-grade wealth tracker built directly into Google Sheets via Google Apps Script.
+
+**Privacy-First & Offline-Ready:** Unlike Mint, Empower, or Monarch, WealthScript does not require handing over your bank credentials to third-party aggregators (like Plaid). Your data lives entirely in your private Google Drive. You manually input your balances—ensuring absolute privacy, security, and a hands-on relationship with your personal finances.
 
 It features native multi-currency support (USD, CAD, INR), automated stock/crypto pricing, live real estate API ingestion, programmatic charting, a reverse-chronological snapshot engine, and **automated Cloud Disaster Recovery** via GitHub Gists.
 
@@ -32,7 +34,7 @@ It features native multi-currency support (USD, CAD, INR), automated stock/crypt
 6. Close the Apps Script tab and return to your Google Sheet. **Refresh the page.**
 
 ### Phase 2: First Time Setup
-1. Look at your top menu bar (File, Edit, View, etc.). You will see a new menu item called **Net Worth Tracker**.
+1. Look at your top menu bar (File, Edit, View, etc.). You will see a new menu item called **WealthScript**.
 2. Click it, and select **"🚀 Run First Time Setup"**.
 3. *Note: Google will present an "Authorization Required" popup. Click Continue > Choose your account > Advanced > "Go to Untitled Project (unsafe)" > Allow. (This is standard for custom scripts).*
 4. The script will automatically generate your foundational tabs, establish the weekly cron job for real estate updates, and auto-provision your GitHub Gist.
@@ -98,7 +100,7 @@ To ensure you never lose your financial history if a spreadsheet gets corrupted,
 
 ## 📸 How to use the Snapshot Engine
 
-Whenever you finish manually reconciling your bank accounts at the end of the month, simply go to the **Net Worth Tracker** menu at the top of your sheet and click **"📸 Log Snapshot & Cloud Sync"**.
+Whenever you finish manually reconciling your bank accounts at the end of the month, simply go to the **WealthScript** menu at the top of your sheet and click **"📸 Log Snapshot & Cloud Sync"**.
 
 **This single click does four things:**
 1. Calculates your new totals, figures out your Liquid/Locked ratios, and records the exact currency exchange rates.

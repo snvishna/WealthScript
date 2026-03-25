@@ -74,7 +74,7 @@ const DASHBOARD_CONFIG = {
  */
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
-  ui.createMenu('Net Worth Tracker')
+  ui.createMenu('WealthScript')
       .addItem('🚀 Run First Time Setup', 'runFirstTimeSetup')
       .addSeparator()
       .addItem('📸 Log Snapshot & Cloud Sync', 'captureSnapshot')
@@ -208,7 +208,7 @@ function buildSettingsTab() {
  */
 function autoCreateGist(pat) {
   const payload = {
-    "description": "Net Worth Tracker Automated Backup",
+    "description": "WealthScript Automated Backup",
     "public": false,
     "files": { "net_worth_backup.json": { "content": "{\n  \"status\": \"Initialized\"\n}" } }
   };
@@ -710,7 +710,7 @@ function backupToGitHub(silent = false) {
   const backupData = _buildLedgerSnapshot(dataRange);
 
   const payload = {
-    "description": "Net Worth Tracker Automated Backup",
+    "description": "WealthScript Automated Backup",
     "files": {
       "net_worth_backup.json": {
         "content": JSON.stringify(backupData, null, 2)
@@ -744,13 +744,13 @@ function backupToGitHub(silent = false) {
 /**
  * Google Drive Backup: serializes the live ledger to a dated JSON file.
  * Requires ZERO configuration — uses the script's own Google auth context.
- * Creates a "Net Worth Tracker — Backups" folder in Drive automatically.
+ * Creates a "WealthScript — Backups" folder in Drive automatically.
  * Retains the latest MAX_DRIVE_BACKUPS files and prunes older ones.
  * @param {boolean} [silent=false] - Suppresses UI alerts on success.
  */
 function backupToGoogleDrive(silent = false) {
   const MAX_DRIVE_BACKUPS = 24; // ~2 years of monthly snapshots
-  const FOLDER_NAME = "Net Worth Tracker \u2014 Backups";
+  const FOLDER_NAME = "WealthScript \u2014 Backups";
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName("Dashboard & Ledger");
@@ -775,7 +775,7 @@ function backupToGoogleDrive(silent = false) {
     folder.createFile(fileName, jsonContent, MimeType.PLAIN_TEXT);
     // Note: old files are NOT pruned here to avoid requesting the Drive DELETE
     // OAuth scope. Files are tiny (~2KB each) — manage them manually in Drive
-    // if needed. Folder: "Net Worth Tracker — Backups" in your Google Drive.
+    // if needed. Folder: "WealthScript — Backups" in your Google Drive.
 
     if (!silent) {
       SpreadsheetApp.getUi().alert(

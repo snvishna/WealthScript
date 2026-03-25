@@ -1,6 +1,6 @@
-# Context: Net Worth Tracker 2.0 Architecture
+# Context: WealthScript 2.0 Architecture
 
-You are an expert Google Apps Script developer and financial modeling architect. I am building a professional-grade Net Worth Tracker in Google Sheets. 
+You are an expert Google Apps Script developer and financial modeling architect. I am building a professional-grade WealthScript in Google Sheets. 
 
 I already have a robust, deployed `code.gs` backend that handles:
 1.  **Multi-Currency Ledger:** Calculates Live USD net worth from CAD and INR assets using `GOOGLEFINANCE`.

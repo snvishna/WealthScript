@@ -1,4 +1,4 @@
-// tests.gs — Baseline Unit Tests for Net Worth Tracker v1
+// tests.gs — Baseline Unit Tests for WealthScript
 // Run any individual test function from the Apps Script editor.
 // These tests are ISOLATED: no live SpreadsheetApp or UrlFetchApp calls.
 
@@ -122,7 +122,7 @@ function test_classifyAsset() {
 
 /** @description Master runner — executes all test suites sequentially. */
 function runAllTests() {
-  Logger.log('=== Running Net Worth Tracker Test Suite ===');
+  Logger.log('=== Running WealthScript Test Suite ===');
   test_calcGrowthDelta();
   test_calcFireProgress();
   test_classifyAsset();
