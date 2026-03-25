@@ -267,6 +267,7 @@ function buildPortfolioTracker() {
 
   /** Abbreviated number format: $1.55M / $320K / $42 */
   const USD_ABBR_FMT = '[>999999]"$"0.00,,"M";[>999]"$"0,"K";"$"0';
+  const PLAIN_ABBR_FMT = '[>999999]0.00,,"M";[>999]0,"K";0.00';
 
   /** Returns the currency symbol for common codes; defaults to the code string. */
   const currencySymbol = (code) => {
