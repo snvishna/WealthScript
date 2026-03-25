@@ -63,6 +63,18 @@ const CLOUD_SYNC_CONFIG = {
 };
 
 /**
+ * DASHBOARD CONFIGURATION
+ * Edit secondaryCurrencies to show your currencies in the top KPI cards.
+ * Supports any valid GOOGLEFINANCE code: EUR, GBP, AUD, JPY, MXN, SGD, etc.
+ * Only the first two entries are rendered (layout: USD + 2 secondary cards).
+ */
+const DASHBOARD_CONFIG = {
+  secondaryCurrencies: ["CAD", "INR"], // ← Change these to your currencies
+  fireTargetUSD: 3_000_000,            // ← Your FIRE / net worth target in USD
+};
+
+
+/**
  * ==========================================
  * APP CORE FUNCTIONALITY
  * ==========================================
@@ -230,65 +242,105 @@ function buildPortfolioTracker() {
   if (!sheet) sheet = ss.insertSheet("Dashboard & Ledger");
   else sheet.clear();
 
-  // ── Row 1: Title Banner ────────────────────────────────────────────────────
+  // ── Row 1: Title Banner ─────────────────────────────────────────────────────
   sheet.getRange("A1:K1").merge()
-    .setValue("💰  TOTAL NET WORTH DASHBOARD")
-    .setBackground("#0f172a").setFontColor("#f8fafc")
-    .setFontWeight("bold").setFontSize(16)
+    .setValue("💰  NET WORTH DASHBOARD")
+    .setBackground("#0f172a").setFontColor("#f1f5f9")
+    .setFontWeight("bold").setFontSize(15)
     .setHorizontalAlignment("center").setVerticalAlignment("middle");
-  sheet.setRowHeight(1, 48);
+  sheet.setRowHeight(1, 44);
 
-  // ── Rows 2-3: KPI Cards (USD | CAD | INR) ─────────────────────────────────
-  // USD card  (cols A-C)
-  sheet.getRange("A2:C3").setBackground("#1e3a5f");
-  sheet.getRange("A2").setValue("Net Worth (USD)").setFontColor("#93c5fd").setFontWeight("bold").setFontSize(9);
-  sheet.getRange("B2").setFormula('=SUMIFS(I:I,J:J,"Active")')
-    .setNumberFormat('"$"#,##0.00').setFontColor("#ffffff").setFontSize(13).setFontWeight("bold");
-  sheet.getRange("A3").setValue("Gross Worth (USD)").setFontColor("#93c5fd").setFontWeight("bold").setFontSize(9);
-  sheet.getRange("B3").setFormula('=SUMIFS(H:H,J:J,"Active")')
-    .setNumberFormat('"$"#,##0.00').setFontColor("#94a3b8").setFontSize(11);
+  // ── Rows 2-3: KPI Cards — USD (primary) + up to 2 secondary currencies ──────
+  //
+  // Card layout over 11 columns:
+  //   Card 0 (USD):   cols A-C  — label col A, value col B
+  //   Card 1 (Cur1):  cols D-G  — label col D, value col E
+  //   Card 2 (Cur2):  cols H-K  — label col H, value col I
+  //
+  // To change secondary currencies edit DASHBOARD_CONFIG.secondaryCurrencies
+  // at the top of this file. Any GOOGLEFINANCE currency code works (EUR, GBP…).
 
-  // CAD card  (cols D-F)
-  sheet.getRange("D2:F3").setBackground("#14532d");
-  sheet.getRange("D2").setValue("Net Worth (CAD)").setFontColor("#86efac").setFontWeight("bold").setFontSize(9);
-  sheet.getRange("E2").setFormula('=B2*IFERROR(GOOGLEFINANCE("CURRENCY:USDCAD"),1)')
-    .setNumberFormat('"$"#,##0.00').setFontColor("#ffffff").setFontSize(13).setFontWeight("bold");
-  sheet.getRange("D3").setValue("Gross Worth (CAD)").setFontColor("#86efac").setFontWeight("bold").setFontSize(9);
-  sheet.getRange("E3").setFormula('=B3*IFERROR(GOOGLEFINANCE("CURRENCY:USDCAD"),1)')
-    .setNumberFormat('"$"#,##0.00').setFontColor("#bbf7d0").setFontSize(11);
+  /** Abbreviated number format: $1.55M / $320K / $42 */
+  const USD_ABBR_FMT = '[>999999]"$"0.00,,"M";[>999]"$"0,"K";"$"0';
 
-  // INR card  (cols G-I)
-  sheet.getRange("G2:I3").setBackground("#312e81");
-  sheet.getRange("G2").setValue("Net Worth (INR)").setFontColor("#c4b5fd").setFontWeight("bold").setFontSize(9);
-  sheet.getRange("H2").setFormula('=B2*IFERROR(GOOGLEFINANCE("CURRENCY:USDINR"),1)')
-    .setNumberFormat('"₹"#,##0.00').setFontColor("#ffffff").setFontSize(13).setFontWeight("bold");
-  sheet.getRange("G3").setValue("Gross Worth (INR)").setFontColor("#c4b5fd").setFontWeight("bold").setFontSize(9);
-  sheet.getRange("H3").setFormula('=B3*IFERROR(GOOGLEFINANCE("CURRENCY:USDINR"),1)')
-    .setNumberFormat('"₹"#,##0.00').setFontColor("#a5b4fc").setFontSize(11);
+  /** Returns the currency symbol for common codes; defaults to the code string. */
+  const currencySymbol = (code) => {
+    const SYM = { USD:'$', EUR:'€', GBP:'£', INR:'₹', JPY:'¥',
+                  CAD:'CA$', AUD:'A$', SGD:'S$', CHF:'Fr', MXN:'MX$' };
+    return SYM[code.toUpperCase()] || code;
+  };
 
-  sheet.setRowHeight(2, 36); sheet.setRowHeight(3, 30);
+  /** Returns an abbreviated Sheets number format for any currency code. */
+  const abbrFmt = (code) => {
+    const s = currencySymbol(code);
+    return `[>999999]"${s}"0.00,,"M";[>999]"${s}"0,"K";"${s}"0`;
+  };
+
+  // Card style definitions (index 0 = USD, 1 = first secondary, 2 = second)
+  const CARD_STYLES = [
+    { bg:"#1e3a5f", labelFg:"#93c5fd", valueFg:"#ffffff", subFg:"#94a3b8" }, // blue
+    { bg:"#14532d", labelFg:"#86efac", valueFg:"#ffffff", subFg:"#bbf7d0" }, // green
+    { bg:"#312e81", labelFg:"#c4b5fd", valueFg:"#ffffff", subFg:"#a5b4fc" }, // indigo
+  ];
+  const CARD_LAYOUT = [
+    { bg:"A2:C3", lbl:"A", val:"B" },
+    { bg:"D2:G3", lbl:"D", val:"E" },
+    { bg:"H2:K3", lbl:"H", val:"I" },
+  ];
+
+  // USD card (always first)
+  const s0 = CARD_STYLES[0]; const c0 = CARD_LAYOUT[0];
+  sheet.getRange(c0.bg).setBackground(s0.bg);
+  sheet.getRange(`${c0.lbl}2`).setValue("Net Worth (USD)").setFontColor(s0.labelFg).setFontWeight("bold").setFontSize(9);
+  sheet.getRange(`${c0.val}2`).setFormula('=SUMIFS(I:I,J:J,"Active")')
+    .setNumberFormat(USD_ABBR_FMT).setFontColor(s0.valueFg).setFontSize(14).setFontWeight("bold");
+  sheet.getRange(`${c0.lbl}3`).setValue("Gross Worth (USD)").setFontColor(s0.labelFg).setFontWeight("bold").setFontSize(9);
+  sheet.getRange(`${c0.val}3`).setFormula('=SUMIFS(H:H,J:J,"Active")')
+    .setNumberFormat(USD_ABBR_FMT).setFontColor(s0.subFg).setFontSize(11);
+
+  // Secondary currency cards — driven by DASHBOARD_CONFIG
+  const secondaryCurrencies = (DASHBOARD_CONFIG.secondaryCurrencies || []).slice(0, 2);
+  secondaryCurrencies.forEach((code, idx) => {
+    const sn = CARD_STYLES[idx + 1]; const cn = CARD_LAYOUT[idx + 1];
+    const fmt = abbrFmt(code);
+    sheet.getRange(cn.bg).setBackground(sn.bg);
+    sheet.getRange(`${cn.lbl}2`).setValue(`Net Worth (${code})`).setFontColor(sn.labelFg).setFontWeight("bold").setFontSize(9);
+    sheet.getRange(`${cn.val}2`).setFormula(`=B2*IFERROR(GOOGLEFINANCE("CURRENCY:USD${code}"),1)`)
+      .setNumberFormat(fmt).setFontColor(sn.valueFg).setFontSize(14).setFontWeight("bold");
+    sheet.getRange(`${cn.lbl}3`).setValue(`Gross Worth (${code})`).setFontColor(sn.labelFg).setFontWeight("bold").setFontSize(9);
+    sheet.getRange(`${cn.val}3`).setFormula(`=B3*IFERROR(GOOGLEFINANCE("CURRENCY:USD${code}"),1)`)
+      .setNumberFormat(fmt).setFontColor(sn.subFg).setFontSize(11);
+  });
+
+  sheet.setRowHeight(2, 38); sheet.setRowHeight(3, 28);
 
   // ── Row 4: Liquid / Locked / FIRE quick-stats ──────────────────────────────
-  const LIQUID_CLASSES = '"Cash","Brokerage","Crypto","Receivable"';
-  const liquidSumParts = LIQUID_CLASSES.split(',').map(c => `SUMIFS(I:I,J:J,"Active",B:B,${c})`).join('+');
+  const LIQUID_CLASSES = ['"Cash"','"Brokerage"','"Crypto"','"Receivable"'];
+  const liquidSumParts = LIQUID_CLASSES.map(c => `SUMIFS(I:I,J:J,"Active",B:B,${c})`).join('+');
+  const fireTarget  = DASHBOARD_CONFIG.fireTargetUSD || 3000000;
+  const fireLabel   = `🔥 FIRE Progress ($${(fireTarget / 1e6).toFixed(0)}M)`;
 
   sheet.getRange("A4:C4").setBackground("#f0f9ff");
   sheet.getRange("A4").setValue("🌊 Liquid Net Worth").setFontColor("#0369a1").setFontWeight("bold").setFontSize(9);
   sheet.getRange("B4").setFormula(`=${liquidSumParts}`)
-    .setNumberFormat('"$"#,##0.00').setFontColor("#0369a1").setFontSize(11).setFontWeight("bold");
+    .setNumberFormat(USD_ABBR_FMT).setFontColor("#0369a1").setFontSize(11).setFontWeight("bold");
 
-  sheet.getRange("D4:F4").setBackground("#f0fdf4");
+  sheet.getRange("D4:G4").setBackground("#f0fdf4");
   sheet.getRange("D4").setValue("🔒 Locked Net Worth").setFontColor("#15803d").setFontWeight("bold").setFontSize(9);
   sheet.getRange("E4").setFormula(`=SUMIFS(I:I,J:J,"Active")-(${liquidSumParts})`)
-    .setNumberFormat('"$"#,##0.00').setFontColor("#15803d").setFontSize(11).setFontWeight("bold");
+    .setNumberFormat(USD_ABBR_FMT).setFontColor("#15803d").setFontSize(11).setFontWeight("bold");
 
-  sheet.getRange("G4:I4").setBackground("#fdf4ff");
-  sheet.getRange("G4").setValue("🔥 FIRE Progress ($3M)").setFontColor("#7e22ce").setFontWeight("bold").setFontSize(9);
-  sheet.getRange("H4").setFormula("=IFERROR(B2/3000000,0)")
-    .setNumberFormat("0.00%").setFontColor("#7e22ce").setFontSize(11).setFontWeight("bold");
+  sheet.getRange("H4:K4").setBackground("#fdf4ff");
+  sheet.getRange("H4").setValue(fireLabel).setFontColor("#7e22ce").setFontWeight("bold").setFontSize(9);
+  sheet.getRange("I4").setFormula(`=IFERROR(B2/${fireTarget},0)`)
+    .setNumberFormat("0.0%").setFontColor("#7e22ce").setFontSize(11).setFontWeight("bold");
 
-  sheet.setRowHeight(4, 30);
-  sheet.setRowHeight(5, 10); // visual gap
+  sheet.setRowHeight(4, 28);
+
+  // ── Row 5: Thin accent bar separating header from data table ───────────────
+  sheet.getRange("A5:K5").setBackground("#3b82f6");
+  sheet.setRowHeight(5, 3);
+
 
   // ── Row 6: Table Header ────────────────────────────────────────────────────
   const headers = ["Account","Asset Class","Currency","Initial Capital","Current Value","Exchange Rate (to USD)","Tax Rate","Gross Worth (USD)","Net Worth (USD)","Status","Remarks"];
