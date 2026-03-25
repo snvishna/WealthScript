@@ -126,5 +126,57 @@ function runAllTests() {
   test_calcGrowthDelta();
   test_calcFireProgress();
   test_classifyAsset();
+  test_cashFlowKpis();
   Logger.log('=== All tests passed ✅ ===');
 }
+
+// =============================================================================
+// EPIC 1 — CASH FLOW KPI HELPERS UNDER TEST
+// Mirror the pure math from buildCashFlowTab() KPI formulas.
+// =============================================================================
+
+/**
+ * Pure function: calculates the annualised Safe Withdrawal Rate.
+ * Formula mirrors: (avgMonthlyBurn * 12) / currentNetWorth
+ * @param {number} avgMonthlyBurn
+ * @param {number} netWorth
+ * @returns {number} SWR as a decimal (e.g. 0.04 = 4%)
+ */
+const _calcSafeWithdrawalRate = (avgMonthlyBurn, netWorth) => {
+  if (!netWorth || netWorth === 0) return 0;
+  return (avgMonthlyBurn * 12) / netWorth;
+};
+
+/**
+ * Pure function: sums expenses from a static mock ledger that fall within TTM window.
+ * @param {Array<{date: Date, amount: number}>} rows
+ * @param {Date} today
+ * @returns {number}
+ */
+const _calcTtmExpenses = (rows, today) => {
+  const cutoff = new Date(today);
+  cutoff.setDate(cutoff.getDate() - 365);
+  return rows
+    .filter(r => r.date >= cutoff && r.amount > 0)
+    .reduce((sum, r) => sum + r.amount, 0);
+};
+
+/** @description Tests for Cash Flow KPI calculation helpers (Epic 1). */
+function test_cashFlowKpis() {
+  // Safe Withdrawal Rate
+  Assert.closeTo(_calcSafeWithdrawalRate(5000, 1500000), 0.04, 0.0001, 'SWR: classic 4% rule');
+  Assert.closeTo(_calcSafeWithdrawalRate(20000, 3000000), 0.08, 0.0001, 'SWR: aggressive spend scenario');
+  Assert.equal(_calcSafeWithdrawalRate(5000, 0), 0, 'SWR: zero net worth returns 0 (no divide-by-zero)');
+
+  // TTM expense aggregation
+  const today = new Date('2026-03-24');
+  const mockRows = [
+    { date: new Date('2026-03-01'), amount: 3500 },  // within TTM
+    { date: new Date('2025-04-01'), amount: 800 },   // within TTM (just inside)
+    { date: new Date('2025-03-01'), amount: 999 },   // outside TTM (>365 days ago)
+    { date: new Date('2026-02-01'), amount: -100 },  // negative — should be excluded
+  ];
+  Assert.closeTo(_calcTtmExpenses(mockRows, today), 4300, 0.01, 'TTM: sums only positive entries within 365 days');
+  Assert.equal(_calcTtmExpenses([], today), 0, 'TTM: empty ledger returns 0');
+}
+

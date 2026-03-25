@@ -1,0 +1,32 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Spotlight-V100
+.DocumentRevisions-V100
+.fseventsd
+.Temporaryitems
+.Trashes
+
+# JetBrains / VSCode IDE
+.idea/
+.vscode/
+*.iml
+
+# Node (if clasp is used locally)
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Google Apps Script / clasp
+# Uncomment if using clasp for local development
+# .clasp.json
+# appsscript.json
+
+# Secrets — never commit real credentials
+# (The code reads these from the Settings tab at runtime, not from files,
+#  but guard against any accidental local copies)
+*.env
+.env.*
+secrets.*
+credentials.*

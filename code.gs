@@ -51,6 +51,7 @@ function onOpen() {
       .addItem('📸 Log Snapshot & Cloud Sync', 'captureSnapshot')
       .addItem('🔄 Refresh Real Estate Prices', 'updateRealEstatePrices')
       .addItem('📊 Update Visual Dashboards', 'updateVisualDashboards')
+      .addItem('💸 Rebuild Cash Flow Tab', 'buildCashFlowTab')
       .addSeparator()
       .addItem('☁️ Force Cloud Backup', 'forceManualBackup')
       .addToUi();
@@ -64,6 +65,7 @@ function runFirstTimeSetup() {
   buildPortfolioTracker();
   buildHoldingsTab();
   buildSnapshotTab();
+  buildCashFlowTab();
 
   // Setup the Weekly Real Estate Trigger
   const triggers = ScriptApp.getProjectTriggers();
@@ -89,7 +91,13 @@ function runFirstTimeSetup() {
 }
 
 /**
- * 1. Builds the Settings & Config Tab
+ * 1. Builds the Settings & Config Tab.
+ * Layout:
+ *   Rows 1-3:   Real Estate API config
+ *   Rows 5-7:   Cloud Backup config
+ *   Rows 9-12:  FIRE & Cash Flow config  ← NEW (Epic 0)
+ *   Rows 14-15: ZPID mapping header
+ *   Rows 16+:   ZPID mapping data
  */
 function buildSettingsTab() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -106,24 +114,45 @@ function buildSettingsTab() {
   }
   if (!gistId) gistId = "PASTE_GIST_ID_HERE";
 
-  // --- Draw UI ---
-  sheet.getRange("A1").setValue("REAL ESTATE API CONFIG").setFontWeight("bold").setFontSize(12);
-  sheet.getRange("A2:B2").setValues([["RapidAPI Key", "PASTE_KEY_HERE"]]).setBackground("#f3f4f6");
-  sheet.getRange("A3:B3").setValues([["RapidAPI Host", "real-estate101.p.rapidapi.com"]]).setBackground("#f3f4f6");
-  
-  sheet.getRange("A5").setValue("CLOUD BACKUP CONFIG (DISASTER RECOVERY)").setFontWeight("bold").setFontSize(12);
-  sheet.getRange("A6:B6").setValues([["GitHub PAT (gist scope)", pat]]).setBackground("#f8fafc");
-  sheet.getRange("A7:B7").setValues([["GitHub Gist ID", gistId]]).setBackground("#f8fafc");
+  // Helper to apply a standard config-row style
+  const styleRow = (range, bg) => range.setBackground(bg).setVerticalAlignment("middle");
 
-  sheet.getRange("A10").setValue("REAL ESTATE ZPID MAPPING").setFontWeight("bold").setFontSize(12);
-  sheet.getRange("A11:B11").setValues([["Account Name (Must match Dashboard exactly)", "ZPID"]]).setBackground("#1e293b").setFontColor("white").setFontWeight("bold");
-  
+  // --- Section 1: Real Estate API ---
+  sheet.getRange("A1").setValue("REAL ESTATE API CONFIG").setFontWeight("bold").setFontSize(12);
+  styleRow(sheet.getRange("A2:B2"), "#f3f4f6").setValues([["RapidAPI Key", "PASTE_KEY_HERE"]]);
+  styleRow(sheet.getRange("A3:B3"), "#f3f4f6").setValues([["RapidAPI Host", "real-estate101.p.rapidapi.com"]]);
+
+  // --- Section 2: Cloud Backup ---
+  sheet.getRange("A5").setValue("CLOUD BACKUP CONFIG (DISASTER RECOVERY)").setFontWeight("bold").setFontSize(12);
+  styleRow(sheet.getRange("A6:B6"), "#f8fafc").setValues([["GitHub PAT (gist scope)", pat]]);
+  styleRow(sheet.getRange("A7:B7"), "#f8fafc").setValues([["GitHub Gist ID", gistId]]);
+
+  // --- Section 3: FIRE & Cash Flow Config (Epic 0) ---
+  sheet.getRange("A9").setValue("FIRE & CASH FLOW CONFIG").setFontWeight("bold").setFontSize(12);
+  const fireConfig = [
+    ["Target Monthly FIRE Budget (USD)", 20000],
+    ["Estimated Monthly Rental Income (USD)", 0],
+    ["Annual Portfolio Return Rate", 0.07]
+  ];
+  const fireRange = sheet.getRange(10, 1, fireConfig.length, 2);
+  fireRange.setValues(fireConfig);
+  styleRow(fireRange, "#f0fdf4");
+  sheet.getRange(10, 2).setNumberFormat("$#,##0");
+  sheet.getRange(11, 2).setNumberFormat("$#,##0");
+  sheet.getRange(12, 2).setNumberFormat("0.00%");
+
+  // --- Section 4: ZPID Mapping ---
+  sheet.getRange("A14").setValue("REAL ESTATE ZPID MAPPING").setFontWeight("bold").setFontSize(12);
+  sheet.getRange("A15:B15")
+    .setValues([["Account Name (Must match Dashboard exactly)", "ZPID"]])
+    .setBackground("#1e293b").setFontColor("white").setFontWeight("bold");
+
   const sampleMapping = [
     ["Primary Residence", "12345678"],
     ["Investment Property 1", "87654321"]
   ];
-  sheet.getRange(12, 1, sampleMapping.length, 2).setValues(sampleMapping);
-  
+  sheet.getRange(16, 1, sampleMapping.length, 2).setValues(sampleMapping);
+
   sheet.setColumnWidth(1, 350);
   sheet.setColumnWidth(2, 350);
 }
@@ -275,6 +304,95 @@ function buildSnapshotTab() {
   sheet.setColumnWidth(12, 350); 
   sheet.setColumnWidth(13, 200); 
   sheet.setFrozenRows(1);
+}
+
+/**
+ * 5. Builds the Cash Flow & Burn Tab (Epic 1).
+ * Top section: KPI summary cards (Average Monthly Burn, TTM Expenses,
+ *              Target FIRE Budget, Safe Withdrawal Rate).
+ * Bottom section: Manual expense ledger with Date / Category / Amount / Notes.
+ */
+function buildCashFlowTab() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName("💸 Cash Flow & Burn");
+  if (!sheet) sheet = ss.insertSheet("💸 Cash Flow & Burn");
+  else sheet.clear();
+
+  // ── Canvas styling ──────────────────────────────────────────────────────────
+  sheet.setHiddenGridlines(true);
+  sheet.getRange("A1:F100").setBackground("#f8fafc");
+
+  // ── Section 1: KPI Summary ──────────────────────────────────────────────────
+  sheet.getRange("A1").setValue("CASH FLOW & BURN RATE SUMMARY")
+    .setFontWeight("bold").setFontSize(14).setFontColor("#0f172a");
+
+  // KPI label column (A) and value column (B)
+  const kpiLabels = [
+    "Average Monthly Burn (USD)",
+    "TTM (Trailing 12-Month) Expenses (USD)",
+    "Target Monthly FIRE Budget (USD)",
+    "Current Safe Withdrawal Rate"
+  ];
+  sheet.getRange(2, 1, kpiLabels.length, 1).setValues(kpiLabels.map(l => [l]))
+    .setFontWeight("bold").setFontColor("#334155");
+
+  // KPI formulas — reference the ledger table which starts at row 9
+  // C column = Amount (USD), A column = Date
+  const kpiFormulas = [
+    // Average monthly burn: average of all positive expense entries
+    [`=IFERROR(AVERAGEIF(C9:C10000,">0"),0)`],
+    // TTM: sum of entries where date is within the last 365 days
+    [`=IFERROR(SUMPRODUCT((A9:A10000>=TODAY()-365)*(C9:C10000>0)*(C9:C10000)),0)`],
+    // Target FIRE Budget pulled from Settings tab (row 10, col B)
+    [`=IFERROR('Settings & Config'!B10, 20000)`],
+    // Safe Withdrawal Rate: annualised burn / current net worth (4% rule reference)
+    [`=IFERROR((B2*12)/'Dashboard & Ledger'!B2, 0)`]
+  ];
+  sheet.getRange(2, 2, kpiFormulas.length, 1).setFormulas(kpiFormulas);
+
+  // Format KPI values
+  sheet.getRange("B2:B4").setNumberFormat("$#,##0.00");
+  sheet.getRange("B5").setNumberFormat("0.00%");
+
+  // Style KPI card rows
+  const kpiCardRange = sheet.getRange(2, 1, kpiLabels.length, 2);
+  kpiCardRange.setBackground("#ffffff").setBorder(true, true, true, true, false, false, "#e2e8f0", SpreadsheetApp.BorderStyle.SOLID);
+
+  // ── Section Divider ─────────────────────────────────────────────────────────
+  sheet.getRange("A7").setValue("EXPENSE LEDGER")
+    .setFontWeight("bold").setFontSize(12).setFontColor("#0f172a");
+
+  // ── Section 2: Expense Ledger ────────────────────────────────────────────────
+  const headers = ["Date", "Category", "Amount (USD)", "Notes"];
+  const headerRange = sheet.getRange(8, 1, 1, headers.length);
+  headerRange.setValues([headers])
+    .setBackground("#1e293b").setFontColor("white").setFontWeight("bold");
+
+  // Sample starter data to illustrate usage
+  const sampleExpenses = [
+    [new Date(), "Housing", 3500, "Mortgage / Rent"],
+    [new Date(), "Groceries", 800, "Monthly groceries"],
+    [new Date(), "Utilities", 250, "Electricity, internet"],
+    [new Date(), "Transport", 400, "Gas, insurance"],
+    [new Date(), "Dining & Entertainment", 600, "Restaurants, subscriptions"]
+  ];
+  const dataRange = sheet.getRange(9, 1, sampleExpenses.length, headers.length);
+  dataRange.setValues(sampleExpenses);
+
+  // Format date and currency columns
+  sheet.getRange(9, 1, 200, 1).setNumberFormat("mm/dd/yyyy");
+  sheet.getRange(9, 3, 200, 1).setNumberFormat("$#,##0.00");
+
+  // Row banding on ledger
+  sheet.getRange(9, 1, 200, headers.length)
+    .applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, false, false);
+
+  // Freeze the header row and resize columns
+  sheet.setFrozenRows(8);
+  sheet.setColumnWidth(1, 120);  // Date
+  sheet.setColumnWidth(2, 200);  // Category
+  sheet.setColumnWidth(3, 160);  // Amount
+  sheet.setColumnWidth(4, 300);  // Notes
 }
 
 /**
@@ -440,7 +558,8 @@ function updateRealEstatePrices() {
   
   if (!apiKey || apiKey === "PASTE_KEY_HERE") return; 
 
-  const propData = configSheet.getRange("A11:B25").getValues();
+  // NOTE: ZPID table starts at row 16 after Epic 0 added FIRE config at rows 9-12.
+  const propData = configSheet.getRange("A16:B30").getValues();
   const properties = [];
   for (let i = 0; i < propData.length; i++) {
     if (propData[i][0] && propData[i][1]) {

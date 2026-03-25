@@ -13,9 +13,11 @@ It features native multi-currency support (USD, CAD, INR), automated stock/crypt
 * **Live Equity Sync:** Bypasses third-party APIs by using Google's native `GOOGLEFINANCE` engine for bulletproof stock, ETF, and crypto pricing.
 * **Automated Real Estate Pricing:** Integrates with RapidAPI to pull live Zestimates for your properties via a weekly cron job.
 * **The Snapshot Engine:** A single click instantly logs your current metrics, parses your "Liquid vs. Locked" assets, and auto-generates a human-readable commentary on what moved your portfolio.
+* **Cash Flow & Burn Rate Pipeline:** A dedicated `💸 Cash Flow & Burn` tab tracks monthly expenses with live KPIs: Average Monthly Burn, Trailing 12-Month (TTM) Expenses, Target FIRE Budget (from Settings), and a live Safe Withdrawal Rate calculated against your current net worth.
 * **Visual Dashboards:** Automatically updates a modern Donut Chart (Asset Allocation) and a smooth Time-Series Line Chart (Historical Net Worth vs. Liquid Cash) directly on your master ledger.
 * **Disaster Recovery (Cloud Sync):** Every time you log a snapshot, your live dashboard data is serialized into structured JSON and pushed directly to a private GitHub Gist. If your sheet is accidentally deleted, your historical ledger state is safely versioned in the cloud.
 * **Native Google Tables Support:** Designed explicitly to utilize Google Sheets' new "Convert to Table" feature for gorgeous, native asset class grouping.
+
 
 ---
 
@@ -36,10 +38,24 @@ It features native multi-currency support (USD, CAD, INR), automated stock/crypt
 4. The script will automatically generate your foundational tabs, establish the weekly cron job for real estate updates, and auto-provision your GitHub Gist.
 
 ### Phase 3: Configuration & Live Data
-1. **The Settings Tab:** Go to the `Settings & Config` tab. Paste your API credentials and map your real estate ZPIDs (see instructions below). Check that your GitHub Gist ID successfully auto-populated.
+1. **The Settings Tab:** Go to the `Settings & Config` tab. Paste your API credentials and map your real estate ZPIDs. Review the new **FIRE & Cash Flow Config** section and adjust your target budget and return rate.
 2. **The Holdings Tab:** Go to the `Brokerage Holdings` tab. List your stock/crypto tickers and quantities. The script will fetch their live prices.
 3. **The Master Ledger:** Go to the `Dashboard & Ledger` tab. Enter your actual bank accounts, balances, and mortgage debt.
     * *Tip: For credit cards or loans, enter the Current Value as a **negative number**.*
+4. **The Cash Flow Tab:** Go to the `💸 Cash Flow & Burn` tab. Replace the sample expense rows with your actual monthly outlays. The KPI summary at the top will update automatically.
+
+#### Settings & Config — Full Reference
+
+| Section | Row | Field | Default |
+|---------|-----|-------|---------|
+| Real Estate API | B2 | RapidAPI Key | `PASTE_KEY_HERE` |
+| Real Estate API | B3 | RapidAPI Host | `real-estate101.p.rapidapi.com` |
+| Cloud Backup | B6 | GitHub PAT (gist scope) | — |
+| Cloud Backup | B7 | GitHub Gist ID | — |
+| FIRE & Cash Flow | B10 | Target Monthly FIRE Budget (USD) | `$20,000` |
+| FIRE & Cash Flow | B11 | Estimated Monthly Rental Income (USD) | `$0` |
+| FIRE & Cash Flow | B12 | Annual Portfolio Return Rate | `7.00%` |
+| ZPID Mapping | A16:B30 | Property Name → ZPID pairs | sample data |
 
 ### Phase 4: Enable Native Tables & Grouping (Crucial Step)
 Google Sheets' "Tables" feature is brand new and cannot be fully automated via script yet. You must enable it manually to get the visual asset grouping:
@@ -111,4 +127,5 @@ The repository includes an isolated unit test suite in `tests.gs`. Tests cover p
 | `code.gs` | Main application logic — tab builders, snapshot engine, API integrations |
 | `tests.gs` | Isolated unit tests for pure business logic functions |
 | `README.md` | This file |
+| `docs/specs/` | Feature specs and architecture documents |
 
