@@ -70,7 +70,7 @@ const CLOUD_SYNC_CONFIG = {
  */
 const DASHBOARD_CONFIG = {
   secondaryCurrencies: ["CAD", "INR"], // ← Change these to your currencies
-  fireTargetUSD: 3_000_000,            // ← Your FIRE / net worth target in USD
+  fireTargetUSD: 3000000,              // ← Your FIRE / net worth target in USD
 };
 
 
