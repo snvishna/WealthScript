@@ -21,7 +21,6 @@ const DEFAULT_PORTFOLIO_DATA = [
   // --- Retirement ---
   ["401k (Employer Plan)",    "Retirement",    "USD", 0,          120000,     "", 0.20, "", "", "Active", "Pre-tax employer 401k"],
   ["Roth IRA",                "Retirement",    "USD", 0,          45000,      "", 0.00, "", "", "Active", "Tax-free Roth IRA (no tax on withdrawal)"],
-  ["RRSP",                    "Retirement",    "CAD", 0,          0,          "", 0.00, "", "", "Active", "Canadian retirement savings"],
 
   // --- Health Savings ---
   ["HSA Account",             "Health Savings","USD", 0,          15000,      "", 0.00, "", "", "Active", "Triple tax-advantaged HSA"],
@@ -29,19 +28,9 @@ const DEFAULT_PORTFOLIO_DATA = [
   // --- Real Estate ---
   ["Primary Residence",       "Real Estate",   "USD", 400000,     450000,     "", 0.20, "", "", "Active", "Primary home"],
   ["Investment Property",     "Real Estate",   "USD", 300000,     350000,     "", 0.20, "", "", "Active", "Rental property"],
-  ["Land Plot (India)",       "Real Estate",   "INR", 5000000,    6000000,    "", 0.20, "", "", "Active", "Undeveloped land"],
-  ["Apartment (India)",       "Real Estate",   "INR", 4000000,    5000000,    "", 0.20, "", "", "Active", "Residential apartment"],
-
-  // --- Commodities ---
-  ["Physical Gold",           "Commodity",     "USD", 0,          0,          "", 0.00, "", "", "Active", "Update value manually"],
-  ["Physical Silver",         "Commodity",     "USD", 0,          0,          "", 0.00, "", "", "Active", "Update value manually"],
 
   // --- Insurance ---
-  ["Term Life Policy",        "Insurance",     "INR", 0,          500000,     "", 0.20, "", "", "Active", "Life insurance surrender value"],
   ["Endowment Policy",        "Insurance",     "INR", 0,          0,          "", 0.20, "", "", "Active", "Maturity value estimate"],
-
-  // --- Receivables ---
-  ["Personal Loan Given",     "Receivable",    "USD", 0,          10000,      "", 0.00, "", "", "Active", "Informal loan — expected repayment"],
 
   // --- Liabilities (Enter Current Value as Negative) ---
   ["Credit Card 1",           "Liability",     "USD", 0,          0,          "", 0.00, "", "", "Active", "Paid in full monthly"],
@@ -168,7 +157,7 @@ function buildSettingsTab() {
   styleRow(sheet.getRange("A6:B6"), "#f8fafc").setValues([["GitHub PAT (gist scope)", pat]]);
   styleRow(sheet.getRange("A7:B7"), "#f8fafc").setValues([["GitHub Gist ID", gistId]]);
 
-  // --- Section 3: FIRE & Cash Flow Config (Epic 0) ---
+  // --- Section 3: FIRE & Cash Flow Config ---
   sheet.getRange("A9").setValue("FIRE & CASH FLOW CONFIG").setFontWeight("bold").setFontSize(12);
   const fireConfig = [
     ["Target Monthly FIRE Budget (USD)", 20000],
@@ -182,9 +171,25 @@ function buildSettingsTab() {
   sheet.getRange(11, 2).setNumberFormat("$#,##0");
   sheet.getRange(12, 2).setNumberFormat("0.00%");
 
-  // --- Section 4: ZPID Mapping ---
-  sheet.getRange("A14").setValue("REAL ESTATE ZPID MAPPING").setFontWeight("bold").setFontSize(12);
-  sheet.getRange("A15:B15")
+  // --- Section 4: Dashboard Currency Config ---
+  // Edit the values in column B to change which secondary currencies appear
+  // in the top KPI cards of the Dashboard & Ledger tab. Any valid
+  // GOOGLEFINANCE currency code works (EUR, GBP, AUD, JPY, SGD, MXN, etc.).
+  // Changing a value here instantly updates the dashboard — no re-run needed.
+  sheet.getRange("A13").setValue("DASHBOARD CURRENCY CONFIG").setFontWeight("bold").setFontSize(12);
+  const currencyConfig = [
+    ["Secondary Currency (Card 2)", (DASHBOARD_CONFIG.secondaryCurrencies[0] || "CAD")],
+    ["Secondary Currency (Card 3)", (DASHBOARD_CONFIG.secondaryCurrencies[1] || "INR")]
+  ];
+  const currRange = sheet.getRange(14, 1, currencyConfig.length, 2);
+  currRange.setValues(currencyConfig);
+  styleRow(currRange, "#eff6ff");
+  sheet.getRange("B14").setNote("Examples: CAD, EUR, GBP, AUD, JPY, SGD, INR, MXN, CHF");
+  sheet.getRange("B15").setNote("Examples: CAD, EUR, GBP, AUD, JPY, SGD, INR, MXN, CHF");
+
+  // --- Section 5: ZPID Mapping ---
+  sheet.getRange("A17").setValue("REAL ESTATE ZPID MAPPING").setFontWeight("bold").setFontSize(12);
+  sheet.getRange("A18:B18")
     .setValues([["Account Name (Must match Dashboard exactly)", "ZPID"]])
     .setBackground("#1e293b").setFontColor("white").setFontWeight("bold");
 
@@ -192,7 +197,7 @@ function buildSettingsTab() {
     ["Primary Residence", "12345678"],
     ["Investment Property 1", "87654321"]
   ];
-  sheet.getRange(16, 1, sampleMapping.length, 2).setValues(sampleMapping);
+  sheet.getRange(19, 1, sampleMapping.length, 2).setValues(sampleMapping);
 
   sheet.setColumnWidth(1, 350);
   sheet.setColumnWidth(2, 350);
@@ -288,51 +293,61 @@ function buildPortfolioTracker() {
     { bg:"H2:K3", lbl:"H", val:"I" },
   ];
 
-  // USD card (always first)
+  // USD card (always first — primary currency)
   const s0 = CARD_STYLES[0]; const c0 = CARD_LAYOUT[0];
   sheet.getRange(c0.bg).setBackground(s0.bg);
   sheet.getRange(`${c0.lbl}2`).setValue("Net Worth (USD)").setFontColor(s0.labelFg).setFontWeight("bold").setFontSize(9);
-  sheet.getRange(`${c0.val}2`).setFormula('=SUMIFS(I:I,J:J,"Active")')
+  sheet.getRange(`${c0.val}2`).setFormula('=SUMIFS(I7:I5000,J7:J5000,"Active")')
     .setNumberFormat(USD_ABBR_FMT).setFontColor(s0.valueFg).setFontSize(14).setFontWeight("bold");
   sheet.getRange(`${c0.lbl}3`).setValue("Gross Worth (USD)").setFontColor(s0.labelFg).setFontWeight("bold").setFontSize(9);
-  sheet.getRange(`${c0.val}3`).setFormula('=SUMIFS(H:H,J:J,"Active")')
+  sheet.getRange(`${c0.val}3`).setFormula('=SUMIFS(H7:H5000,J7:J5000,"Active")')
     .setNumberFormat(USD_ABBR_FMT).setFontColor(s0.subFg).setFontSize(11);
 
-  // Secondary currency cards — driven by DASHBOARD_CONFIG
-  const secondaryCurrencies = (DASHBOARD_CONFIG.secondaryCurrencies || []).slice(0, 2);
-  secondaryCurrencies.forEach((code, idx) => {
+  // Secondary currency cards — labels and formulas reference Settings tab
+  // directly so CHANGING A CURRENCY IN SETTINGS INSTANTLY UPDATES THE CARD.
+  const SETTINGS_CURRENCY_CELLS = ["'Settings & Config'!B14", "'Settings & Config'!B15"];
+  SETTINGS_CURRENCY_CELLS.slice(0, 2).forEach((settingsCell, idx) => {
     const sn = CARD_STYLES[idx + 1]; const cn = CARD_LAYOUT[idx + 1];
-    const fmt = abbrFmt(code);
     sheet.getRange(cn.bg).setBackground(sn.bg);
-    sheet.getRange(`${cn.lbl}2`).setValue(`Net Worth (${code})`).setFontColor(sn.labelFg).setFontWeight("bold").setFontSize(9);
-    sheet.getRange(`${cn.val}2`).setFormula(`=B2*IFERROR(GOOGLEFINANCE("CURRENCY:USD${code}"),1)`)
-      .setNumberFormat(fmt).setFontColor(sn.valueFg).setFontSize(14).setFontWeight("bold");
-    sheet.getRange(`${cn.lbl}3`).setValue(`Gross Worth (${code})`).setFontColor(sn.labelFg).setFontWeight("bold").setFontSize(9);
-    sheet.getRange(`${cn.val}3`).setFormula(`=B3*IFERROR(GOOGLEFINANCE("CURRENCY:USD${code}"),1)`)
-      .setNumberFormat(fmt).setFontColor(sn.subFg).setFontSize(11);
+    // Label formula: dynamically shows the currency code from Settings
+    sheet.getRange(`${cn.lbl}2`)
+      .setFormula(`="Net Worth ("&${settingsCell}&")"`)  
+      .setFontColor(sn.labelFg).setFontWeight("bold").setFontSize(9);
+    // Value formula: GOOGLEFINANCE uses the currency code from Settings
+    sheet.getRange(`${cn.val}2`)
+      .setFormula(`=B2*IFERROR(GOOGLEFINANCE("CURRENCY:USD"&${settingsCell}),1)`)
+      .setNumberFormat(PLAIN_ABBR_FMT).setFontColor(sn.valueFg).setFontSize(14).setFontWeight("bold");
+    sheet.getRange(`${cn.lbl}3`)
+      .setFormula(`="Gross Worth ("&${settingsCell}&")"`)  
+      .setFontColor(sn.labelFg).setFontWeight("bold").setFontSize(9);
+    sheet.getRange(`${cn.val}3`)
+      .setFormula(`=B3*IFERROR(GOOGLEFINANCE("CURRENCY:USD"&${settingsCell}),1)`)
+      .setNumberFormat(PLAIN_ABBR_FMT).setFontColor(sn.subFg).setFontSize(11);
   });
 
   sheet.setRowHeight(2, 38); sheet.setRowHeight(3, 28);
 
   // ── Row 4: Liquid / Locked / FIRE quick-stats ──────────────────────────────
+  // IMPORTANT: use bounded ranges (B7:B5000, not B:B) to avoid circular
+  // dependency — this cell is in column B, which whole-col refs would include.
   const LIQUID_CLASSES = ['"Cash"','"Brokerage"','"Crypto"','"Receivable"'];
-  const liquidSumParts = LIQUID_CLASSES.map(c => `SUMIFS(I:I,J:J,"Active",B:B,${c})`).join('+');
+  const liquidParts = LIQUID_CLASSES.map(c => `SUMIFS(I7:I5000,J7:J5000,"Active",B7:B5000,${c})`).join('+');
   const fireTarget  = DASHBOARD_CONFIG.fireTargetUSD || 3000000;
   const fireLabel   = `🔥 FIRE Progress ($${(fireTarget / 1e6).toFixed(0)}M)`;
 
   sheet.getRange("A4:C4").setBackground("#f0f9ff");
   sheet.getRange("A4").setValue("🌊 Liquid Net Worth").setFontColor("#0369a1").setFontWeight("bold").setFontSize(9);
-  sheet.getRange("B4").setFormula(`=${liquidSumParts}`)
+  sheet.getRange("B4").setFormula(`=${liquidParts}`)
     .setNumberFormat(USD_ABBR_FMT).setFontColor("#0369a1").setFontSize(11).setFontWeight("bold");
 
   sheet.getRange("D4:G4").setBackground("#f0fdf4");
   sheet.getRange("D4").setValue("🔒 Locked Net Worth").setFontColor("#15803d").setFontWeight("bold").setFontSize(9);
-  sheet.getRange("E4").setFormula(`=SUMIFS(I:I,J:J,"Active")-(${liquidSumParts})`)
+  sheet.getRange("E4").setFormula(`=SUMIFS(I7:I5000,J7:J5000,"Active")-(${liquidParts})`)
     .setNumberFormat(USD_ABBR_FMT).setFontColor("#15803d").setFontSize(11).setFontWeight("bold");
 
   sheet.getRange("H4:K4").setBackground("#fdf4ff");
   sheet.getRange("H4").setValue(fireLabel).setFontColor("#7e22ce").setFontWeight("bold").setFontSize(9);
-  sheet.getRange("I4").setFormula(`=IFERROR(B2/${fireTarget},0)`)
+  sheet.getRange("I4").setFormula(`=IFERROR(SUMIFS(I7:I5000,J7:J5000,"Active")/${fireTarget},0)`)
     .setNumberFormat("0.0%").setFontColor("#7e22ce").setFontSize(11).setFontWeight("bold");
 
   sheet.setRowHeight(4, 28);
