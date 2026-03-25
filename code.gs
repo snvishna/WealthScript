@@ -411,7 +411,8 @@ function buildPortfolioTracker() {
   sheet.setColumnWidth(10, 80);  // Status
   sheet.setColumnWidth(11, 260); // Remarks
   sheet.setFrozenRows(6);
-  sheet.setFrozenColumns(1);
+  // Note: setFrozenColumns is intentionally omitted — it conflicts with the
+  // full-width merged banner in row 1. Freeze columns manually if needed.
 }
 
 /**
@@ -756,21 +757,13 @@ function backupToGoogleDrive(silent = false) {
     const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH-mm");
     const fileName = `net_worth_${timestamp}.json`;
     folder.createFile(fileName, jsonContent, MimeType.PLAIN_TEXT);
-
-    // Prune: collect all files, sort newest-first, trash any beyond the limit
-    const fileIterator = folder.getFiles();
-    const allFiles = [];
-    while (fileIterator.hasNext()) allFiles.push(fileIterator.next());
-    allFiles.sort((a, b) => b.getDateCreated() - a.getDateCreated());
-    for (let i = MAX_DRIVE_BACKUPS; i < allFiles.length; i++) {
-      allFiles[i].setTrashed(true);
-    }
+    // Note: old files are NOT pruned here to avoid requesting the Drive DELETE
+    // OAuth scope. Files are tiny (~2KB each) — manage them manually in Drive
+    // if needed. Folder: "Net Worth Tracker — Backups" in your Google Drive.
 
     if (!silent) {
-      const pruned = Math.max(0, allFiles.length - MAX_DRIVE_BACKUPS);
       SpreadsheetApp.getUi().alert(
-        `\u2705 Google Drive Backup Successful!\n\nFolder: "${FOLDER_NAME}"\nFile: ${fileName}` +
-        (pruned > 0 ? `\n\n${pruned} old backup(s) pruned.` : "")
+        `\u2705 Google Drive Backup Successful!\n\nFolder: "${FOLDER_NAME}"\nFile: ${fileName}`
       );
     }
   } catch (e) {
