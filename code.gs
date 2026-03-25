@@ -7,23 +7,51 @@
  */
 const DEFAULT_PORTFOLIO_DATA = [
   // --- Cash & Checking ---
-  ["Primary Checking", "Cash", "USD", 0, 5000, "", 0.00, "", "", "Active", "Everyday expenses"],
-  ["High Yield Savings", "Cash", "USD", 0, 25000, "", 0.00, "", "", "Active", "Emergency Fund"],
-  ["International Bank", "Cash", "CAD", 0, 10000, "", 0.00, "", "", "Active", "Travel funds"],
-  
-  // --- Investments & Retirement ---
-  ["Taxable Brokerage", "Brokerage", "USD", 40000, 55000, "", 0.15, "", "", "Active", "Index Funds"],
-  ["401k / RRSP", "Retirement", "USD", 0, 120000, "", 0.20, "", "", "Active", "Pre-tax retirement"],
-  ["Crypto Exchange", "Crypto", "USD", 5000, 8000, "", 0.15, "", "", "Active", "BTC/ETH"],
-  
+  ["Primary Checking",        "Cash",          "USD", 0,          8000,       "", 0.00, "", "", "Active", "Everyday expenses account"],
+  ["High Yield Savings",      "Cash",          "USD", 0,          40000,      "", 0.00, "", "", "Active", "Emergency fund (6 months)"],
+  ["International Bank",      "Cash",          "CAD", 0,          10000,      "", 0.00, "", "", "Active", "Canadian bank account"],
+
+  // --- Brokerage ---
+  ["Taxable Brokerage",       "Brokerage",     "USD", 0,          5000,       "", 0.15, "", "", "Active", "Index funds (VTI / VXUS)"],
+  ["Angel Investing",         "Brokerage",     "USD", 2000,       1500,       "", 0.30, "", "", "Active", "Private equity / startup investing"],
+
+  // --- Crypto ---
+  ["Crypto Exchange",         "Crypto",        "USD", 0,          8000,       "", 0.30, "", "", "Active", "BTC / ETH"],
+
+  // --- Retirement ---
+  ["401k (Employer Plan)",    "Retirement",    "USD", 0,          120000,     "", 0.20, "", "", "Active", "Pre-tax employer 401k"],
+  ["Roth IRA",                "Retirement",    "USD", 0,          45000,      "", 0.00, "", "", "Active", "Tax-free Roth IRA (no tax on withdrawal)"],
+  ["RRSP",                    "Retirement",    "CAD", 0,          0,          "", 0.00, "", "", "Active", "Canadian retirement savings"],
+
+  // --- Health Savings ---
+  ["HSA Account",             "Health Savings","USD", 0,          15000,      "", 0.00, "", "", "Active", "Triple tax-advantaged HSA"],
+
   // --- Real Estate ---
-  ["Primary Residence", "Real Estate", "USD", 400000, 550000, "", 0.00, "", "", "Active", "House"],
-  ["Investment Property 1", "Real Estate", "USD", 250000, 310000, "", 0.15, "", "", "Active", "Rental"],
-  
+  ["Primary Residence",       "Real Estate",   "USD", 400000,     450000,     "", 0.20, "", "", "Active", "Primary home"],
+  ["Investment Property",     "Real Estate",   "USD", 300000,     350000,     "", 0.20, "", "", "Active", "Rental property"],
+  ["Land Plot (India)",       "Real Estate",   "INR", 5000000,    6000000,    "", 0.20, "", "", "Active", "Undeveloped land"],
+  ["Apartment (India)",       "Real Estate",   "INR", 4000000,    5000000,    "", 0.20, "", "", "Active", "Residential apartment"],
+
+  // --- Commodities ---
+  ["Physical Gold",           "Commodity",     "USD", 0,          0,          "", 0.00, "", "", "Active", "Update value manually"],
+  ["Physical Silver",         "Commodity",     "USD", 0,          0,          "", 0.00, "", "", "Active", "Update value manually"],
+
+  // --- Insurance ---
+  ["Term Life Policy",        "Insurance",     "INR", 0,          500000,     "", 0.20, "", "", "Active", "Life insurance surrender value"],
+  ["Endowment Policy",        "Insurance",     "INR", 0,          0,          "", 0.20, "", "", "Active", "Maturity value estimate"],
+
+  // --- Receivables ---
+  ["Personal Loan Given",     "Receivable",    "USD", 0,          10000,      "", 0.00, "", "", "Active", "Informal loan — expected repayment"],
+
   // --- Liabilities (Enter Current Value as Negative) ---
-  ["Primary Credit Card", "Liability", "USD", 0, -1500, "", 0.00, "", "", "Active", "Paid monthly"],
-  ["Primary Mortgage", "Liability", "USD", 0, -380000, "", 0.00, "", "", "Active", "Home Loan"]
+  ["Credit Card 1",           "Liability",     "USD", 0,          0,          "", 0.00, "", "", "Active", "Paid in full monthly"],
+  ["Credit Card 2 (CAD)",     "Liability",     "CAD", 0,          -1500,      "", 0.00, "", "", "Active", "Canadian credit card"],
+  ["Credit Card 3",           "Liability",     "USD", 0,          -2000,      "", 0.00, "", "", "Active", ""],
+  ["Credit Card 4",           "Liability",     "USD", 0,          -1200,      "", 0.00, "", "", "Active", ""],
+  ["Auto Loan",               "Liability",     "USD", 0,          -8000,      "", 0.00, "", "", "Active", "Vehicle loan"],
+  ["Primary Mortgage",        "Liability",     "USD", 0,          -380000,    "", 0.00, "", "", "Active", "Home mortgage — 30yr fixed"],
 ];
+
 
 /**
  * CLOUD DISASTER RECOVERY CONFIGURATION
@@ -53,7 +81,8 @@ function onOpen() {
       .addItem('📊 Update Visual Dashboards', 'updateVisualDashboards')
       .addItem('💸 Rebuild Cash Flow Tab', 'buildCashFlowTab')
       .addSeparator()
-      .addItem('☁️ Force Cloud Backup', 'forceManualBackup')
+      .addItem('☁️ Force GitHub Gist Backup', 'forceGistBackup')
+      .addItem('📂 Force Google Drive Backup', 'forceDriveBackup')
       .addToUi();
 }
 
@@ -192,7 +221,8 @@ function autoCreateGist(pat) {
 }
 
 /**
- * 2. Builds the Dashboard & Ledger (Ready for Native Tables)
+ * 2. Builds the Dashboard & Ledger with full professional formatting.
+ * Rows 1-4: KPI summary dashboard. Row 5: gap. Row 6: table header. Row 7+: data.
  */
 function buildPortfolioTracker() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -200,53 +230,136 @@ function buildPortfolioTracker() {
   if (!sheet) sheet = ss.insertSheet("Dashboard & Ledger");
   else sheet.clear();
 
-  sheet.getRange("A1").setValue("TOTAL NET WORTH DASHBOARD").setFontWeight("bold").setFontSize(14);
-  
-  sheet.getRange("A2").setValue("Total Net Worth (USD):").setFontWeight("bold");
-  sheet.getRange("B2").setFormula('=SUMIFS(I:I, J:J, "Active")').setNumberFormat("$#,##0.00");
-  sheet.getRange("A3").setValue("Total Gross Worth (USD):").setFontWeight("bold");
-  sheet.getRange("B3").setFormula('=SUMIFS(H:H, J:J, "Active")').setNumberFormat("$#,##0.00");
-  
-  sheet.getRange("D2").setValue("Total Net Worth (CAD):").setFontWeight("bold");
-  sheet.getRange("E2").setFormula('=B2 * IFERROR(GOOGLEFINANCE("CURRENCY:USDCAD"), 1)').setNumberFormat("$#,##0.00");
-  sheet.getRange("D3").setValue("Total Gross Worth (CAD):").setFontWeight("bold");
-  sheet.getRange("E3").setFormula('=B3 * IFERROR(GOOGLEFINANCE("CURRENCY:USDCAD"), 1)').setNumberFormat("$#,##0.00");
-  
-  sheet.getRange("G2").setValue("Total Net Worth (INR):").setFontWeight("bold");
-  sheet.getRange("H2").setFormula('=B2 * IFERROR(GOOGLEFINANCE("CURRENCY:USDINR"), 1)').setNumberFormat("₹#,##0.00");
-  sheet.getRange("G3").setValue("Total Gross Worth (INR):").setFontWeight("bold");
-  sheet.getRange("H3").setFormula('=B3 * IFERROR(GOOGLEFINANCE("CURRENCY:USDINR"), 1)').setNumberFormat("₹#,##0.00");
-  
-  sheet.getRange("A1:H4").setBackground("#f3f4f6");
+  // ── Row 1: Title Banner ────────────────────────────────────────────────────
+  sheet.getRange("A1:K1").merge()
+    .setValue("💰  TOTAL NET WORTH DASHBOARD")
+    .setBackground("#0f172a").setFontColor("#f8fafc")
+    .setFontWeight("bold").setFontSize(16)
+    .setHorizontalAlignment("center").setVerticalAlignment("middle");
+  sheet.setRowHeight(1, 48);
 
-  const headers = ["Account", "Asset Class", "Currency", "Initial Capital", "Current Value", "Exchange Rate (to USD)", "Tax Rate", "Gross Worth (USD)", "Net Worth (USD)", "Status", "Remarks"];
-  sheet.getRange(6, 1, 1, headers.length).setValues([headers]);
+  // ── Rows 2-3: KPI Cards (USD | CAD | INR) ─────────────────────────────────
+  // USD card  (cols A-C)
+  sheet.getRange("A2:C3").setBackground("#1e3a5f");
+  sheet.getRange("A2").setValue("Net Worth (USD)").setFontColor("#93c5fd").setFontWeight("bold").setFontSize(9);
+  sheet.getRange("B2").setFormula('=SUMIFS(I:I,J:J,"Active")')
+    .setNumberFormat('"$"#,##0.00').setFontColor("#ffffff").setFontSize(13).setFontWeight("bold");
+  sheet.getRange("A3").setValue("Gross Worth (USD)").setFontColor("#93c5fd").setFontWeight("bold").setFontSize(9);
+  sheet.getRange("B3").setFormula('=SUMIFS(H:H,J:J,"Active")')
+    .setNumberFormat('"$"#,##0.00').setFontColor("#94a3b8").setFontSize(11);
 
-  // Inject Global Data
+  // CAD card  (cols D-F)
+  sheet.getRange("D2:F3").setBackground("#14532d");
+  sheet.getRange("D2").setValue("Net Worth (CAD)").setFontColor("#86efac").setFontWeight("bold").setFontSize(9);
+  sheet.getRange("E2").setFormula('=B2*IFERROR(GOOGLEFINANCE("CURRENCY:USDCAD"),1)')
+    .setNumberFormat('"$"#,##0.00').setFontColor("#ffffff").setFontSize(13).setFontWeight("bold");
+  sheet.getRange("D3").setValue("Gross Worth (CAD)").setFontColor("#86efac").setFontWeight("bold").setFontSize(9);
+  sheet.getRange("E3").setFormula('=B3*IFERROR(GOOGLEFINANCE("CURRENCY:USDCAD"),1)')
+    .setNumberFormat('"$"#,##0.00').setFontColor("#bbf7d0").setFontSize(11);
+
+  // INR card  (cols G-I)
+  sheet.getRange("G2:I3").setBackground("#312e81");
+  sheet.getRange("G2").setValue("Net Worth (INR)").setFontColor("#c4b5fd").setFontWeight("bold").setFontSize(9);
+  sheet.getRange("H2").setFormula('=B2*IFERROR(GOOGLEFINANCE("CURRENCY:USDINR"),1)')
+    .setNumberFormat('"₹"#,##0.00').setFontColor("#ffffff").setFontSize(13).setFontWeight("bold");
+  sheet.getRange("G3").setValue("Gross Worth (INR)").setFontColor("#c4b5fd").setFontWeight("bold").setFontSize(9);
+  sheet.getRange("H3").setFormula('=B3*IFERROR(GOOGLEFINANCE("CURRENCY:USDINR"),1)')
+    .setNumberFormat('"₹"#,##0.00').setFontColor("#a5b4fc").setFontSize(11);
+
+  sheet.setRowHeight(2, 36); sheet.setRowHeight(3, 30);
+
+  // ── Row 4: Liquid / Locked / FIRE quick-stats ──────────────────────────────
+  const LIQUID_CLASSES = '"Cash","Brokerage","Crypto","Receivable"';
+  const liquidSumParts = LIQUID_CLASSES.split(',').map(c => `SUMIFS(I:I,J:J,"Active",B:B,${c})`).join('+');
+
+  sheet.getRange("A4:C4").setBackground("#f0f9ff");
+  sheet.getRange("A4").setValue("🌊 Liquid Net Worth").setFontColor("#0369a1").setFontWeight("bold").setFontSize(9);
+  sheet.getRange("B4").setFormula(`=${liquidSumParts}`)
+    .setNumberFormat('"$"#,##0.00').setFontColor("#0369a1").setFontSize(11).setFontWeight("bold");
+
+  sheet.getRange("D4:F4").setBackground("#f0fdf4");
+  sheet.getRange("D4").setValue("🔒 Locked Net Worth").setFontColor("#15803d").setFontWeight("bold").setFontSize(9);
+  sheet.getRange("E4").setFormula(`=SUMIFS(I:I,J:J,"Active")-(${liquidSumParts})`)
+    .setNumberFormat('"$"#,##0.00').setFontColor("#15803d").setFontSize(11).setFontWeight("bold");
+
+  sheet.getRange("G4:I4").setBackground("#fdf4ff");
+  sheet.getRange("G4").setValue("🔥 FIRE Progress ($3M)").setFontColor("#7e22ce").setFontWeight("bold").setFontSize(9);
+  sheet.getRange("H4").setFormula("=IFERROR(B2/3000000,0)")
+    .setNumberFormat("0.00%").setFontColor("#7e22ce").setFontSize(11).setFontWeight("bold");
+
+  sheet.setRowHeight(4, 30);
+  sheet.setRowHeight(5, 10); // visual gap
+
+  // ── Row 6: Table Header ────────────────────────────────────────────────────
+  const headers = ["Account","Asset Class","Currency","Initial Capital","Current Value","Exchange Rate (to USD)","Tax Rate","Gross Worth (USD)","Net Worth (USD)","Status","Remarks"];
+  sheet.getRange(6, 1, 1, headers.length)
+    .setValues([headers])
+    .setBackground("#0f172a").setFontColor("#f8fafc")
+    .setFontWeight("bold").setFontSize(11)
+    .setHorizontalAlignment("center").setVerticalAlignment("middle");
+  sheet.setRowHeight(6, 36);
+
+  // ── Rows 7+: Data & Computed Formulas ─────────────────────────────────────
   sheet.getRange(7, 1, DEFAULT_PORTFOLIO_DATA.length, headers.length).setValues(DEFAULT_PORTFOLIO_DATA);
 
-  const numRowsToFill = 45; 
-  const formulas = [];
-  for (let i = 0; i < numRowsToFill; i++) {
-    let rowNum = i + 7; 
-    formulas.push([
-      `=IF(ISBLANK(C${rowNum}), "", IF(TRIM(UPPER(C${rowNum}))="USD", 1, IFERROR(GOOGLEFINANCE("CURRENCY:"&TRIM(UPPER(C${rowNum}))&"USD"), "Error")))`, 
-      `=IF(AND(ISNUMBER(E${rowNum}), ISNUMBER(F${rowNum})), E${rowNum} * F${rowNum}, "")`, 
-      `=IF(AND(ISNUMBER(H${rowNum}), ISNUMBER(G${rowNum})), H${rowNum} - (MAX(0, E${rowNum} - D${rowNum}) * F${rowNum} * G${rowNum}), "")`  
-    ]);
+  const NUM_ROWS = 70;
+  const exch = [], gross = [], net = [];
+  for (let i = 0; i < NUM_ROWS; i++) {
+    const r = i + 7;
+    exch.push([`=IF(ISBLANK(C${r}),"",IF(TRIM(UPPER(C${r}))="USD",1,IFERROR(GOOGLEFINANCE("CURRENCY:"&TRIM(UPPER(C${r}))&"USD"),"Error")))` ]);
+    gross.push([`=IF(AND(ISNUMBER(E${r}),ISNUMBER(F${r})),E${r}*F${r},"")` ]);
+    net.push([`=IF(AND(ISNUMBER(H${r}),ISNUMBER(G${r})),H${r}-(MAX(0,E${r}-D${r})*F${r}*G${r}),"")` ]);
   }
-  
-  sheet.getRange(7, 6, numRowsToFill, 1).setFormulas(formulas.map(row => [row[0]])); 
-  sheet.getRange(7, 8, numRowsToFill, 1).setFormulas(formulas.map(row => [row[1]])); 
-  sheet.getRange(7, 9, numRowsToFill, 1).setFormulas(formulas.map(row => [row[2]])); 
+  sheet.getRange(7, 6, NUM_ROWS, 1).setFormulas(exch);
+  sheet.getRange(7, 8, NUM_ROWS, 1).setFormulas(gross);
+  sheet.getRange(7, 9, NUM_ROWS, 1).setFormulas(net);
 
-  sheet.getRange("D7:E55").setNumberFormat("#,##0.00"); 
-  sheet.getRange("H7:I55").setNumberFormat("$#,##0.00"); 
-  sheet.getRange("G7:G55").setNumberFormat("0.00%"); 
-  sheet.getRange("F7:F55").setNumberFormat("0.0000"); 
-  
-  sheet.autoResizeColumns(1, headers.length);
-  sheet.setColumnWidth(11, 250);
+  // ── Number Formats ────────────────────────────────────────────────────────
+  const lastDataRow = 6 + NUM_ROWS;
+  sheet.getRange(7, 4, NUM_ROWS, 1).setNumberFormat("#,##0.00");       // Initial Capital
+  sheet.getRange(7, 5, NUM_ROWS, 1).setNumberFormat("#,##0.00");       // Current Value
+  sheet.getRange(7, 6, NUM_ROWS, 1).setNumberFormat("0.0000");          // Exchange Rate
+  sheet.getRange(7, 7, NUM_ROWS, 1).setNumberFormat("0.00%");           // Tax Rate
+  sheet.getRange(7, 8, NUM_ROWS, 1).setNumberFormat('"$"#,##0.00');    // Gross Worth
+  sheet.getRange(7, 9, NUM_ROWS, 1).setNumberFormat('"$"#,##0.00');    // Net Worth
+
+  // ── Conditional Formatting: Asset Class Color Coding ───────────────────────
+  const assetClassRange = sheet.getRange(7, 2, NUM_ROWS, 1);
+  const classColors = [
+    ["Cash",           "#dcfce7"], ["Brokerage",   "#dbeafe"],
+    ["Retirement",     "#ede9fe"], ["Health Savings","#bbf7d0"],
+    ["Real Estate",    "#fef9c3"], ["Crypto",       "#fed7aa"],
+    ["Commodity",      "#fef3c7"], ["Insurance",    "#e0e7ff"],
+    ["Receivable",     "#d1fae5"], ["Liability",    "#fee2e2"],
+  ];
+  const cfRules = classColors.map(([cls, bg]) =>
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo(cls).setBackground(bg)
+      .setRanges([assetClassRange]).build()
+  );
+  // Red text for negative net worth values
+  cfRules.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenNumberLessThan(0)
+      .setBackground("#fff1f2").setFontColor("#be123c")
+      .setRanges([sheet.getRange(7, 9, NUM_ROWS, 1)]).build()
+  );
+  sheet.setConditionalFormatRules(cfRules);
+
+  // ── Column Widths & Polish ─────────────────────────────────────────────────
+  sheet.setColumnWidth(1, 220);  // Account
+  sheet.setColumnWidth(2, 135);  // Asset Class
+  sheet.setColumnWidth(3, 90);   // Currency
+  sheet.setColumnWidth(4, 130);  // Initial Capital
+  sheet.setColumnWidth(5, 130);  // Current Value
+  sheet.setColumnWidth(6, 160);  // Exchange Rate
+  sheet.setColumnWidth(7, 90);   // Tax Rate
+  sheet.setColumnWidth(8, 150);  // Gross Worth
+  sheet.setColumnWidth(9, 150);  // Net Worth
+  sheet.setColumnWidth(10, 80);  // Status
+  sheet.setColumnWidth(11, 260); // Remarks
+  sheet.setFrozenRows(6);
+  sheet.setFrozenColumns(1);
 }
 
 /**
@@ -409,7 +522,7 @@ function captureSnapshot() {
   const grossUSD = mainSheet.getRange("B3").getValue();
   const netCAD = mainSheet.getRange("E2").getValue();
   const netINR = mainSheet.getRange("H2").getValue();
-  const dataRange = mainSheet.getRange("A7:J60").getValues(); 
+  const dataRange = mainSheet.getRange("A7:J80").getValues(); 
   
   let liquidUSD = 0, lockedUSD = 0, totalReUSD = 0;
 
@@ -453,18 +566,53 @@ function captureSnapshot() {
   logSheet.getRange(2, 10).setNumberFormat("[Color10]+0.00%;[Color3]-0.00%"); 
   logSheet.getRange(2, 11).setNumberFormat("0.00%"); 
   
-  // Chain the Cloud Sync silently
+  // Chain both cloud backups silently, then refresh charts
   backupToGitHub(true);
-  
-  // Update the visual charts with the new data
+  backupToGoogleDrive(true);
   updateVisualDashboards(); 
 }
 
+/** Manual trigger: runs GitHub Gist backup only. */
+function forceGistBackup() { backupToGitHub(false); }
+
+/** Manual trigger: runs Google Drive backup only. */
+function forceDriveBackup() { backupToGoogleDrive(false); }
+
 /**
- * Manual trigger wrapper for UI
+ * Manual trigger: runs BOTH backup methods.
+ * @deprecated Use forceGistBackup() or forceDriveBackup() directly.
  */
 function forceManualBackup() {
   backupToGitHub(false);
+  backupToGoogleDrive(false);
+}
+
+/**
+ * Pure helper: transforms a raw 2D ledger data range into a structured JSON array.
+ * Used by both backupToGitHub() and backupToGoogleDrive().
+ * @param {Array<Array<*>>} dataRange - 2D array from sheet.getRange().getValues()
+ * @returns {Array<Object>} Structured account objects
+ */
+function _buildLedgerSnapshot(dataRange) {
+  const snapshot = [];
+  for (let i = 0; i < dataRange.length; i++) {
+    const account = String(dataRange[i][0]);
+    if (!account) continue;
+    snapshot.push({
+      Account:      account,
+      AssetClass:   String(dataRange[i][1]),
+      Currency:     String(dataRange[i][2]),
+      InitialCapital: Number(dataRange[i][3]) || 0,
+      CurrentValue:   Number(dataRange[i][4]) || 0,
+      ExchangeRate:   Number(dataRange[i][5]) || 0,
+      TaxRate:        Number(dataRange[i][6]) || 0,
+      GrossWorthUSD:  Number(dataRange[i][7]) || 0,
+      NetWorthUSD:    Number(dataRange[i][8]) || 0,
+      Status:   String(dataRange[i][9]),
+      Remarks:  String(dataRange[i][10])
+    });
+  }
+  return snapshot;
 }
 
 /**
@@ -489,27 +637,8 @@ function backupToGitHub(silent = false) {
     return;
   }
 
-  const dataRange = sheet.getRange("A7:K60").getValues();
-  const backupData = [];
-
-  for (let i = 0; i < dataRange.length; i++) {
-    let account = String(dataRange[i][0]);
-    if (!account) continue; 
-
-    backupData.push({
-      "Account": account,
-      "AssetClass": String(dataRange[i][1]),
-      "Currency": String(dataRange[i][2]),
-      "InitialCapital": Number(dataRange[i][3]) || 0,
-      "CurrentValue": Number(dataRange[i][4]) || 0,
-      "ExchangeRate": Number(dataRange[i][5]) || 0,
-      "TaxRate": Number(dataRange[i][6]) || 0,
-      "GrossWorthUSD": Number(dataRange[i][7]) || 0,
-      "NetWorthUSD": Number(dataRange[i][8]) || 0,
-      "Status": String(dataRange[i][9]),
-      "Remarks": String(dataRange[i][10])
-    });
-  }
+  const dataRange = sheet.getRange("A7:K80").getValues();
+  const backupData = _buildLedgerSnapshot(dataRange);
 
   const payload = {
     "description": "Net Worth Tracker Automated Backup",
@@ -540,6 +669,61 @@ function backupToGitHub(silent = false) {
     }
   } catch (e) {
     if(!silent) SpreadsheetApp.getUi().alert("❌ Script crashed:\n" + e.message);
+  }
+}
+
+/**
+ * Google Drive Backup: serializes the live ledger to a dated JSON file.
+ * Requires ZERO configuration — uses the script's own Google auth context.
+ * Creates a "Net Worth Tracker — Backups" folder in Drive automatically.
+ * Retains the latest MAX_DRIVE_BACKUPS files and prunes older ones.
+ * @param {boolean} [silent=false] - Suppresses UI alerts on success.
+ */
+function backupToGoogleDrive(silent = false) {
+  const MAX_DRIVE_BACKUPS = 24; // ~2 years of monthly snapshots
+  const FOLDER_NAME = "Net Worth Tracker \u2014 Backups";
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("Dashboard & Ledger");
+  if (!sheet) return;
+
+  try {
+    const dataRange = sheet.getRange("A7:K80").getValues();
+    const accounts = _buildLedgerSnapshot(dataRange);
+    const jsonContent = JSON.stringify({
+      snapshotDate: new Date().toISOString(),
+      spreadsheetId: ss.getId(),
+      accounts
+    }, null, 2);
+
+    // Resolve or create the backup folder
+    const folderIterator = DriveApp.getFoldersByName(FOLDER_NAME);
+    const folder = folderIterator.hasNext() ? folderIterator.next() : DriveApp.createFolder(FOLDER_NAME);
+
+    // Create the dated backup file
+    const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH-mm");
+    const fileName = `net_worth_${timestamp}.json`;
+    folder.createFile(fileName, jsonContent, MimeType.PLAIN_TEXT);
+
+    // Prune: collect all files, sort newest-first, trash any beyond the limit
+    const fileIterator = folder.getFiles();
+    const allFiles = [];
+    while (fileIterator.hasNext()) allFiles.push(fileIterator.next());
+    allFiles.sort((a, b) => b.getDateCreated() - a.getDateCreated());
+    for (let i = MAX_DRIVE_BACKUPS; i < allFiles.length; i++) {
+      allFiles[i].setTrashed(true);
+    }
+
+    if (!silent) {
+      const pruned = Math.max(0, allFiles.length - MAX_DRIVE_BACKUPS);
+      SpreadsheetApp.getUi().alert(
+        `\u2705 Google Drive Backup Successful!\n\nFolder: "${FOLDER_NAME}"\nFile: ${fileName}` +
+        (pruned > 0 ? `\n\n${pruned} old backup(s) pruned.` : "")
+      );
+    }
+  } catch (e) {
+    Logger.log("Google Drive backup error: " + e.message);
+    if (!silent) SpreadsheetApp.getUi().alert("\u274c Drive Backup Failed:\n" + e.message);
   }
 }
 
