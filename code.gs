@@ -82,8 +82,7 @@ function onOpen() {
       .addItem('📊 Update Visual Dashboards', 'updateVisualDashboards')
       .addItem('💸 Rebuild Cash Flow Tab', 'buildCashFlowTab')
       .addSeparator()
-      .addItem('☁️ Force GitHub Gist Backup', 'forceGistBackup')
-      .addItem('📂 Force Google Drive Backup', 'forceDriveBackup')
+      .addItem('☁️ Force Cloud Backup', 'forceBackup')
       .addToUi();
 }
 
@@ -641,17 +640,8 @@ function captureSnapshot() {
   updateVisualDashboards(); 
 }
 
-/** Manual trigger: runs GitHub Gist backup only. */
-function forceGistBackup() { backupToGitHub(false); }
-
-/** Manual trigger: runs Google Drive backup only. */
-function forceDriveBackup() { backupToGoogleDrive(false); }
-
-/**
- * Manual trigger: runs BOTH backup methods.
- * @deprecated Use forceGistBackup() or forceDriveBackup() directly.
- */
-function forceManualBackup() {
+/** Manual trigger: runs both Gist and Drive backups with UI alerts. */
+function forceBackup() {
   backupToGitHub(false);
   backupToGoogleDrive(false);
 }

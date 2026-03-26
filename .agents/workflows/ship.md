@@ -9,6 +9,7 @@ You must execute the following steps sequentially. If any step fails, ABORT the 
    - Execute `@.agents/workflows/generate-tests.md` to ensure all new logic has coverage.
 
 2. **Test Execution:**
+   - Execute the logic defined in `@.agents/workflows/generate-tests.md`.
    - Simulate a run of the newly generated test functions. If any `Assert` throws an error, ABORT the pipeline, fix the underlying logic in `code.gs`, and restart the pipeline.
    
 3. **Pre-Flight Check (Linting):**

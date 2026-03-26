@@ -120,18 +120,6 @@ function test_classifyAsset() {
   Assert.equal(_classifyAsset('Cash', 'Active', NaN), 'skip', 'classify: NaN value row is skipped');
 }
 
-/** @description Master runner — executes all test suites sequentially. */
-function runAllTests() {
-  Logger.log('=== Running WealthScript Test Suite ===');
-  test_calcGrowthDelta();
-  test_calcFireProgress();
-  test_classifyAsset();
-  test_cashFlowKpis();
-  test_buildLedgerSnapshot();
-  test_driveBackupPruning();
-  Logger.log('=== All tests passed ✅ ===');
-}
-
 // =============================================================================
 // _buildLedgerSnapshot — SHARED BACKUP HELPER UNDER TEST
 // =============================================================================
@@ -248,6 +236,7 @@ function test_cashFlowKpis() {
   Assert.closeTo(_calcSafeWithdrawalRate(5000, 1500000), 0.04, 0.0001, 'SWR: classic 4% rule');
   Assert.closeTo(_calcSafeWithdrawalRate(20000, 3000000), 0.08, 0.0001, 'SWR: aggressive spend scenario');
   Assert.equal(_calcSafeWithdrawalRate(5000, 0), 0, 'SWR: zero net worth returns 0 (no divide-by-zero)');
+  Assert.equal(_calcSafeWithdrawalRate(0, 1500000), 0, 'SWR: zero burn returns 0');
 
   // TTM expense aggregation
   const today = new Date('2026-03-24');
@@ -261,3 +250,125 @@ function test_cashFlowKpis() {
   Assert.equal(_calcTtmExpenses([], today), 0, 'TTM: empty ledger returns 0');
 }
 
+
+// =============================================================================
+// DASHBOARD HELPER FUNCTIONS UNDER TEST
+// Mirror pure helpers from buildPortfolioTracker() for isolated testing.
+// =============================================================================
+
+/**
+ * Pure function: maps a currency code to its symbol.
+ * @param {string} code
+ * @returns {string}
+ */
+const _currencySymbol = (code) => {
+  const SYM = { USD:'$', EUR:'€', GBP:'£', INR:'₹', JPY:'¥',
+                CAD:'CA$', AUD:'A$', SGD:'S$', CHF:'Fr', MXN:'MX$' };
+  return SYM[code.toUpperCase()] || code;
+};
+
+/**
+ * Pure function: generates an abbreviated Sheets number format string.
+ * @param {string} code
+ * @returns {string}
+ */
+const _abbrFmt = (code) => {
+  const s = _currencySymbol(code);
+  return `[>999999]"${s}"0.00,,"M";[>999]"${s}"0,"K";"${s}"0`;
+};
+
+/**
+ * Pure function: mirrors the snapshot auto-insight commentary from captureSnapshot().
+ * @param {number} currentNet
+ * @param {number} prevNet
+ * @param {number} liquidUSD
+ * @param {number} prevLiquid
+ * @returns {string}
+ */
+const _generateInsight = (currentNet, prevNet, liquidUSD, prevLiquid) => {
+  if (!prevNet || isNaN(prevNet)) return "Initial baseline snapshot established.";
+  const dollarDelta = currentNet - prevNet;
+  const liquidDelta = liquidUSD - prevLiquid;
+  const formatVal = (val) => "$" + Math.abs(val).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  const trend = dollarDelta >= 0 ? "Increased" : "Decreased";
+  const sign = (val) => val >= 0 ? "+" : "-";
+  return `Net worth ${trend.toLowerCase()} by ${formatVal(dollarDelta)}. Liquid pool ${sign(liquidDelta)}${formatVal(liquidDelta)}.`;
+};
+
+/** @description Tests for the currencySymbol mapping helper. */
+function test_currencySymbol() {
+  Assert.equal(_currencySymbol('USD'), '$', 'currSym: USD maps to $');
+  Assert.equal(_currencySymbol('EUR'), '€', 'currSym: EUR maps to €');
+  Assert.equal(_currencySymbol('GBP'), '£', 'currSym: GBP maps to £');
+  Assert.equal(_currencySymbol('INR'), '₹', 'currSym: INR maps to ₹');
+  Assert.equal(_currencySymbol('JPY'), '¥', 'currSym: JPY maps to ¥');
+  Assert.equal(_currencySymbol('CAD'), 'CA$', 'currSym: CAD maps to CA$');
+  Assert.equal(_currencySymbol('cad'), 'CA$', 'currSym: case-insensitive');
+  Assert.equal(_currencySymbol('XYZ'), 'XYZ', 'currSym: unknown code returns the code itself');
+}
+
+/** @description Tests for the abbreviated number format builder. */
+function test_abbrFmt() {
+  const usdFmt = _abbrFmt('USD');
+  Assert.isTrue(usdFmt.includes('"$"'), 'abbrFmt: USD format includes $ symbol');
+  Assert.isTrue(usdFmt.includes('"M"'), 'abbrFmt: USD format includes M suffix');
+  Assert.isTrue(usdFmt.includes('"K"'), 'abbrFmt: USD format includes K suffix');
+
+  const inrFmt = _abbrFmt('INR');
+  Assert.isTrue(inrFmt.includes('"₹"'), 'abbrFmt: INR format includes ₹ symbol');
+
+  const unknownFmt = _abbrFmt('BRL');
+  Assert.isTrue(unknownFmt.includes('"BRL"'), 'abbrFmt: unknown code embeds the code string');
+}
+
+/** @description Tests for the snapshot auto-insight commentary generator. */
+function test_generateInsight() {
+  // First snapshot — no previous data
+  Assert.equal(
+    _generateInsight(1000000, null, 200000, 0),
+    'Initial baseline snapshot established.',
+    'insight: first snapshot returns baseline message'
+  );
+
+  // Positive growth
+  const up = _generateInsight(1100000, 1000000, 250000, 200000);
+  Assert.isTrue(up.includes('increased'), 'insight: positive delta says "increased"');
+  Assert.isTrue(up.includes('+'), 'insight: positive liquid delta shows + sign');
+
+  // Negative growth
+  const down = _generateInsight(900000, 1000000, 180000, 200000);
+  Assert.isTrue(down.includes('decreased'), 'insight: negative delta says "decreased"');
+  Assert.isTrue(down.includes('-'), 'insight: negative liquid delta shows - sign');
+
+  // Zero delta
+  const flat = _generateInsight(1000000, 1000000, 200000, 200000);
+  Assert.isTrue(flat.includes('increased'), 'insight: zero delta treated as increase');
+  Assert.isTrue(flat.includes('$0'), 'insight: zero delta formatted as $0');
+}
+
+/** @description Additional edge-case tests for asset classification. */
+function test_classifyAsset_extended() {
+  // All locked classes
+  Assert.equal(_classifyAsset('Health Savings', 'Active', 15000), 'locked', 'classify: HSA is locked');
+  Assert.equal(_classifyAsset('Insurance', 'Active', 5000), 'locked', 'classify: Insurance is locked');
+  Assert.equal(_classifyAsset('Commodity', 'Active', 1000), 'locked', 'classify: Commodity is locked');
+  Assert.equal(_classifyAsset('Liability', 'Active', -5000), 'locked', 'classify: Liability is locked');
+  // Edge: negative net value (should NOT skip, because it's non-zero)
+  Assert.equal(_classifyAsset('Cash', 'Active', -100), 'liquid', 'classify: negative Cash is still liquid');
+}
+
+/** @description Master runner — executes all test suites sequentially. */
+function runAllTests() {
+  Logger.log('=== Running WealthScript Test Suite ===');
+  test_calcGrowthDelta();
+  test_calcFireProgress();
+  test_classifyAsset();
+  test_classifyAsset_extended();
+  test_cashFlowKpis();
+  test_buildLedgerSnapshot();
+  test_driveBackupPruning();
+  test_currencySymbol();
+  test_abbrFmt();
+  test_generateInsight();
+  Logger.log('=== All tests passed ✅ (52 assertions) ===');
+}
