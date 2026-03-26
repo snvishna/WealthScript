@@ -92,8 +92,8 @@ function _buildLedgerSnapshot(dataRange) {
  */
 function _isGistConfigured(configSheet) {
   if (!configSheet) return false;
-  const pat = configSheet.getRange("B6").getValue();
-  const gistId = configSheet.getRange("B7").getValue();
+  const pat = configSheet.getRange("B13").getValue();
+  const gistId = configSheet.getRange("B14").getValue();
   return pat && pat !== "PASTE_GITHUB_TOKEN_HERE" && gistId && gistId !== "PASTE_GIST_ID_HERE";
 }
 
@@ -112,8 +112,8 @@ function backupToGitHub(silent = false) {
     return false;
   }
 
-  const githubToken = configSheet.getRange("B6").getValue();
-  const gistId = configSheet.getRange("B7").getValue();
+  const githubToken = configSheet.getRange("B13").getValue();
+  const gistId = configSheet.getRange("B14").getValue();
   const backupData = _buildEnrichedBackup(ss);
 
   const payload = {

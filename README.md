@@ -98,18 +98,18 @@ From the **WealthScript** menu, click **☁️ Force Cloud Backup** to trigger b
 
 | Section | Cell | Field | Default |
 |---------|------|-------|---------|
-| Real Estate API | B2 | RapidAPI Key | `PASTE_KEY_HERE` |
-| Real Estate API | B3 | RapidAPI Host | `real-estate101.p.rapidapi.com` |
-| Cloud Backup | B6 | GitHub PAT (gist scope) | — |
-| Cloud Backup | B7 | GitHub Gist ID | *(auto-created by wizard)* |
-| Cloud Backup | B8 | GitHub Gist URL | *(clickable hyperlink, set by wizard)* |
-| Cloud Backup | B9 | Google Drive Backup Folder | *(clickable hyperlink, set by wizard)* |
-| FIRE & Cash Flow | B12 | Target Monthly FIRE Budget (USD) | `$20,000` |
-| FIRE & Cash Flow | B13 | Estimated Monthly Rental Income (USD) | `$0` |
-| FIRE & Cash Flow | B14 | Annual Portfolio Return Rate | `7.00%` |
-| Dashboard Currency | B16 | Secondary Currency (Card 2) | `CAD` |
-| Dashboard Currency | B17 | Secondary Currency (Card 3) | `INR` |
-| ZPID Mapping | A21:B37 | Property Name → ZPID pairs | sample data |
+| Real Estate API | B9 | RapidAPI Key | `PASTE_KEY_HERE` |
+| Real Estate API | B10 | RapidAPI Host | `real-estate101.p.rapidapi.com` |
+| Cloud Backup | B13 | GitHub PAT (gist scope) | — |
+| Cloud Backup | B14 | GitHub Gist ID | *(auto-created by wizard)* |
+| Cloud Backup | B15 | GitHub Gist URL | *(clickable hyperlink, set by wizard)* |
+| Cloud Backup | B16 | Google Drive Backup Folder | *(clickable hyperlink, set by wizard)* |
+| FIRE & Cash Flow | B19 | Target Monthly FIRE Budget (USD) | `$20,000` |
+| FIRE & Cash Flow | B20 | Estimated Monthly Rental Income (USD) | `$0` |
+| FIRE & Cash Flow | B21 | Annual Portfolio Return Rate | `7.00%` |
+| Dashboard Currency | B23 | Secondary Currency (Card 2) | `CAD` |
+| Dashboard Currency | B24 | Secondary Currency (Card 3) | `INR` |
+| ZPID Mapping | A28:B44 | Property Name → ZPID pairs | sample data |
 
 ### Phase 4: Enable Native Tables & Grouping
 1. On `Dashboard & Ledger`, select all data rows (Row 7+).
