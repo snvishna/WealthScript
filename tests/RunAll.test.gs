@@ -11,5 +11,7 @@ function runAllTests() {
   test_currencySymbol();
   test_abbrFmt();
   test_generateInsight();
-  Logger.log('=== All tests passed ✅ (52 assertions) ===');
+  test_validatePATFormat();
+  test_buildGistUrl();
+  Logger.log('=== All tests passed ✅ (62 assertions) ===');
 }

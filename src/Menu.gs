@@ -11,6 +11,8 @@ function onOpen() {
       .addItem('📊 Update Visual Dashboards', 'updateVisualDashboards')
       .addItem('💸 Rebuild Cash Flow Tab', 'buildCashFlowTab')
       .addSeparator()
+      .addItem('🔐 Setup GitHub Backup', 'setupGistWizard')
+      .addItem('📁 Setup Google Drive Backup', 'setupDriveBackup')
       .addItem('☁️ Force Cloud Backup', 'forceBackup')
       .addToUi();
 }

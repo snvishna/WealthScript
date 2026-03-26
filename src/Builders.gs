@@ -1,6 +1,3 @@
-/**
- * 1. Builds the Settings & Config Tab.
- */
 function buildSettingsTab() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("Settings & Config");
@@ -27,33 +24,39 @@ function buildSettingsTab() {
   sheet.getRange("A5").setValue("CLOUD BACKUP CONFIG (DISASTER RECOVERY)").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
   styleRow(sheet.getRange("A6:B6"), THEME.kpiCardBg).setValues([["GitHub PAT (gist scope)", pat]]);
   styleRow(sheet.getRange("A7:B7"), THEME.kpiCardBg).setValues([["GitHub Gist ID", gistId]]);
+  styleRow(sheet.getRange("A8:B8"), THEME.kpiCardBg).setValues([["GitHub Gist URL", "Run '🔐 Setup GitHub Backup' from the menu"]]);
+  sheet.getRange("A8").setFontColor(THEME.mutedText);
+  sheet.getRange("B8").setFontColor(THEME.accentBlue);
+  styleRow(sheet.getRange("A9:B9"), THEME.kpiCardBg).setValues([["Google Drive Backup Folder", "Run '📁 Setup Google Drive Backup' from the menu"]]);
+  sheet.getRange("A9").setFontColor(THEME.mutedText);
+  sheet.getRange("B9").setFontColor(THEME.accentBlue);
 
-  sheet.getRange("A9").setValue("FIRE & CASH FLOW CONFIG").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
+  sheet.getRange("A11").setValue("FIRE & CASH FLOW CONFIG").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
   const fireConfig = [
     ["Target Monthly FIRE Budget (USD)", 20000],
     ["Estimated Monthly Rental Income (USD)", 0],
     ["Annual Portfolio Return Rate", 0.07]
   ];
-  const fireRange = sheet.getRange(10, 1, fireConfig.length, 2);
+  const fireRange = sheet.getRange(12, 1, fireConfig.length, 2);
   fireRange.setValues(fireConfig);
   styleRow(fireRange, THEME.kpiCardBg);
-  sheet.getRange(10, 2).setNumberFormat("$#,##0");
-  sheet.getRange(11, 2).setNumberFormat("$#,##0");
-  sheet.getRange(12, 2).setNumberFormat("0.00%");
+  sheet.getRange(12, 2).setNumberFormat("$#,##0");
+  sheet.getRange(13, 2).setNumberFormat("$#,##0");
+  sheet.getRange(14, 2).setNumberFormat("0.00%");
 
-  sheet.getRange("A13").setValue("DASHBOARD CURRENCY CONFIG").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
+  sheet.getRange("A15").setValue("DASHBOARD CURRENCY CONFIG").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
   const currencyConfig = [
     ["Secondary Currency (Card 2)", (DASHBOARD_CONFIG.secondaryCurrencies[0] || "CAD")],
     ["Secondary Currency (Card 3)", (DASHBOARD_CONFIG.secondaryCurrencies[1] || "INR")]
   ];
-  const currRange = sheet.getRange(14, 1, currencyConfig.length, 2);
+  const currRange = sheet.getRange(16, 1, currencyConfig.length, 2);
   currRange.setValues(currencyConfig);
   styleRow(currRange, THEME.kpiCardBg);
-  sheet.getRange("B14").setNote("Examples: CAD, EUR, GBP, AUD, JPY, SGD, INR, MXN, CHF");
-  sheet.getRange("B15").setNote("Examples: CAD, EUR, GBP, AUD, JPY, SGD, INR, MXN, CHF");
+  sheet.getRange("B16").setNote("Examples: CAD, EUR, GBP, AUD, JPY, SGD, INR, MXN, CHF");
+  sheet.getRange("B17").setNote("Examples: CAD, EUR, GBP, AUD, JPY, SGD, INR, MXN, CHF");
 
-  sheet.getRange("A17").setValue("REAL ESTATE ZPID MAPPING").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
-  sheet.getRange("A18:B18")
+  sheet.getRange("A19").setValue("REAL ESTATE ZPID MAPPING").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
+  sheet.getRange("A20:B20")
     .setValues([["Account Name (Must match Dashboard exactly)", "ZPID"]])
     .setBackground(THEME.headerBg).setFontColor(THEME.headerText).setFontWeight("bold");
 
@@ -61,7 +64,7 @@ function buildSettingsTab() {
     ["Primary Residence", "12345678"],
     ["Investment Property 1", "87654321"]
   ];
-  sheet.getRange(19, 1, sampleMapping.length, 2).setValues(sampleMapping);
+  sheet.getRange(21, 1, sampleMapping.length, 2).setValues(sampleMapping);
 
   sheet.setColumnWidth(1, 350);
   sheet.setColumnWidth(2, 350);
@@ -120,7 +123,7 @@ function buildPortfolioTracker() {
   sheet.getRange(`${c0.val}3`).setFormula('=SUMIFS(H7:H5000,J7:J5000,"Active")')
     .setNumberFormat(USD_ABBR_FMT).setFontColor(s0.subFg).setFontSize(11);
 
-  const SETTINGS_CURRENCY_CELLS = ["'Settings & Config'!B14", "'Settings & Config'!B15"];
+  const SETTINGS_CURRENCY_CELLS = ["'Settings & Config'!B16", "'Settings & Config'!B17"];
   SETTINGS_CURRENCY_CELLS.slice(0, 2).forEach((settingsCell, idx) => {
     const sn = CARD_STYLES[idx + 1]; const cn = CARD_LAYOUT[idx + 1];
     sheet.getRange(cn.bg).setBackground(sn.bg);
@@ -313,7 +316,7 @@ function buildCashFlowTab() {
   const kpiFormulas = [
     [`=IFERROR(AVERAGEIF(C9:C10000,">0"),0)`],
     [`=IFERROR(SUMPRODUCT((A9:A10000>=TODAY()-365)*(C9:C10000>0)*(C9:C10000)),0)`],
-    [`=IFERROR('Settings & Config'!B10, 20000)`],
+    [`=IFERROR('Settings & Config'!B12, 20000)`],
     [`=IFERROR((B2*12)/'Dashboard & Ledger'!B2, 0)`]
   ];
   sheet.getRange(2, 2, kpiFormulas.length, 1).setFormulas(kpiFormulas);

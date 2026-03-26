@@ -13,7 +13,7 @@ function updateRealEstatePrices() {
   
   if (!apiKey || apiKey === "PASTE_KEY_HERE") return; 
 
-  const propData = configSheet.getRange("A19:B35").getValues();
+  const propData = configSheet.getRange("A21:B37").getValues();
   const properties = [];
   for (let i = 0; i < propData.length; i++) {
     if (propData[i][0] && propData[i][1]) {

@@ -114,6 +114,8 @@ function onOpen() {
       .addItem('📊 Update Visual Dashboards', 'updateVisualDashboards')
       .addItem('💸 Rebuild Cash Flow Tab', 'buildCashFlowTab')
       .addSeparator()
+      .addItem('🔐 Setup GitHub Backup', 'setupGistWizard')
+      .addItem('📁 Setup Google Drive Backup', 'setupDriveBackup')
       .addItem('☁️ Force Cloud Backup', 'forceBackup')
       .addToUi();
 }
@@ -151,6 +153,154 @@ function runFirstTimeSetup() {
   SpreadsheetApp.getUi().alert("Setup Complete!\n\n1. Review the 'Settings & Config' tab.\n2. Highlight rows 7+ on your Dashboard and click Format > Convert to Table.");
 }
 /**
+ * ==========================================
+ * BACKUP SETUP WIZARD
+ * Guided flows for GitHub Gist & Google Drive
+ * ==========================================
+ */
+
+/**
+ * Pure helper: validates that a string looks like a GitHub PAT.
+ * Accepts classic tokens (ghp_*) and fine-grained tokens (github_pat_*).
+ * @param {string} token - The raw token string from user input.
+ * @returns {boolean}
+ */
+function _validatePATFormat(token) {
+  if (!token || typeof token !== 'string') return false;
+  const trimmed = token.trim();
+  return /^ghp_[A-Za-z0-9]{36,}$/.test(trimmed) || /^github_pat_[A-Za-z0-9_]{20,}$/.test(trimmed);
+}
+
+/**
+ * Pure helper: builds Gist URL from an ID.
+ * @param {string} gistId
+ * @returns {string}
+ */
+function _buildGistUrl(gistId) {
+  return `https://gist.github.com/${gistId}`;
+}
+
+/**
+ * Guided GitHub Gist Backup Wizard.
+ * Opens the PAT creation page, prompts for token, validates, creates Gist,
+ * and populates the Settings tab with credentials and a clickable hyperlink.
+ */
+function setupGistWizard() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const configSheet = ss.getSheetByName("Settings & Config");
+
+  if (!configSheet) {
+    ui.alert("⚠️ Settings tab not found.\n\nPlease run '🚀 Run First Time Setup' first.");
+    return;
+  }
+
+  // Step 1: Open GitHub PAT creation page in new tab
+  const patUrl = "https://github.com/settings/tokens/new?scopes=gist&description=WealthScript+Backup";
+  const htmlOutput = HtmlService
+    .createHtmlOutput(
+      `<p>A new tab will open to GitHub where you can create a Personal Access Token.</p>
+       <p><b>Instructions:</b></p>
+       <ol>
+         <li>The <code>gist</code> scope is pre-selected — do NOT change it.</li>
+         <li>Click <b>"Generate token"</b> at the bottom of the page.</li>
+         <li>Copy the token (starts with <code>ghp_</code>).</li>
+         <li>Come back here and click OK, then paste it in the next dialog.</li>
+       </ol>
+       <script>window.open("${patUrl}");google.script.host.setHeight(220);</script>`
+    )
+    .setWidth(420)
+    .setHeight(220);
+  ui.showModalDialog(htmlOutput, "🔐 Step 1: Create GitHub Token");
+
+  // Step 2: Prompt for token
+  const response = ui.prompt(
+    "🔐 Step 2: Paste Your Token",
+    "Paste the GitHub Personal Access Token you just created:",
+    ui.ButtonSet.OK_CANCEL
+  );
+
+  if (response.getSelectedButton() !== ui.Button.OK) {
+    ui.alert("Wizard cancelled. No changes were made.");
+    return;
+  }
+
+  const pat = response.getResponseText().trim();
+
+  // Step 3: Validate token format
+  if (!_validatePATFormat(pat)) {
+    ui.alert("❌ Invalid Token Format\n\nExpected a token starting with 'ghp_' or 'github_pat_'.\nPlease try the wizard again.");
+    return;
+  }
+
+  // Step 4: Validate token against GitHub API
+  try {
+    const testResponse = UrlFetchApp.fetch("https://api.github.com/user", {
+      headers: { "Authorization": "Bearer " + pat, "Accept": "application/vnd.github.v3+json" },
+      muteHttpExceptions: true
+    });
+    if (testResponse.getResponseCode() !== 200) {
+      ui.alert("❌ Token Validation Failed\n\nGitHub rejected the token. Please ensure it has 'gist' scope and try again.");
+      return;
+    }
+  } catch (e) {
+    ui.alert("❌ Network Error\n\n" + e.message);
+    return;
+  }
+
+  // Step 5: Create Gist and populate Settings
+  const gistId = autoCreateGist(pat);
+  if (!gistId) {
+    ui.alert("❌ Gist Creation Failed\n\nThe token is valid but Gist creation failed. Check Apps Script logs for details.");
+    return;
+  }
+
+  configSheet.getRange("B6").setValue(pat);
+  configSheet.getRange("B7").setValue(gistId);
+
+  const gistUrl = _buildGistUrl(gistId);
+  const richGistLink = SpreadsheetApp.newRichTextValue()
+    .setText(gistUrl)
+    .setLinkUrl(gistUrl)
+    .build();
+  configSheet.getRange("B8").setRichTextValue(richGistLink);
+
+  ui.alert(`✅ GitHub Backup Connected!\n\nYour private Gist has been created and linked.\nGist ID: ${gistId}\n\nEvery snapshot will now auto-sync to GitHub.`);
+}
+
+/**
+ * Guided Google Drive Backup Setup.
+ * Creates the backup folder (if needed), retrieves its URL,
+ * and populates the Settings tab with a clickable hyperlink.
+ */
+function setupDriveBackup() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const configSheet = ss.getSheetByName("Settings & Config");
+  const FOLDER_NAME = "WealthScript \u2014 Backups";
+
+  if (!configSheet) {
+    ui.alert("⚠️ Settings tab not found.\n\nPlease run '🚀 Run First Time Setup' first.");
+    return;
+  }
+
+  try {
+    const folderIterator = DriveApp.getFoldersByName(FOLDER_NAME);
+    const folder = folderIterator.hasNext() ? folderIterator.next() : DriveApp.createFolder(FOLDER_NAME);
+    const folderUrl = folder.getUrl();
+
+    const richDriveLink = SpreadsheetApp.newRichTextValue()
+      .setText(folderUrl)
+      .setLinkUrl(folderUrl)
+      .build();
+    configSheet.getRange("B9").setRichTextValue(richDriveLink);
+
+    ui.alert(`✅ Google Drive Backup Connected!\n\nFolder: "${FOLDER_NAME}"\n\nA clickable link has been added to your Settings tab.\nEvery snapshot will now auto-sync a dated JSON file here.`);
+  } catch (e) {
+    ui.alert("❌ Drive Setup Failed:\n" + e.message);
+  }
+}
+/**
  * Fetches Zestimates using config from the Settings tab.
  */
 function updateRealEstatePrices() {
@@ -165,7 +315,7 @@ function updateRealEstatePrices() {
   
   if (!apiKey || apiKey === "PASTE_KEY_HERE") return; 
 
-  const propData = configSheet.getRange("A19:B35").getValues();
+  const propData = configSheet.getRange("A21:B37").getValues();
   const properties = [];
   for (let i = 0; i < propData.length; i++) {
     if (propData[i][0] && propData[i][1]) {
@@ -209,9 +359,6 @@ function updateRealEstatePrices() {
     sheet.getRange("E1:E100").setValues(currentValues);
   }
 }
-/**
- * 1. Builds the Settings & Config Tab.
- */
 function buildSettingsTab() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("Settings & Config");
@@ -238,33 +385,39 @@ function buildSettingsTab() {
   sheet.getRange("A5").setValue("CLOUD BACKUP CONFIG (DISASTER RECOVERY)").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
   styleRow(sheet.getRange("A6:B6"), THEME.kpiCardBg).setValues([["GitHub PAT (gist scope)", pat]]);
   styleRow(sheet.getRange("A7:B7"), THEME.kpiCardBg).setValues([["GitHub Gist ID", gistId]]);
+  styleRow(sheet.getRange("A8:B8"), THEME.kpiCardBg).setValues([["GitHub Gist URL", "Run '🔐 Setup GitHub Backup' from the menu"]]);
+  sheet.getRange("A8").setFontColor(THEME.mutedText);
+  sheet.getRange("B8").setFontColor(THEME.accentBlue);
+  styleRow(sheet.getRange("A9:B9"), THEME.kpiCardBg).setValues([["Google Drive Backup Folder", "Run '📁 Setup Google Drive Backup' from the menu"]]);
+  sheet.getRange("A9").setFontColor(THEME.mutedText);
+  sheet.getRange("B9").setFontColor(THEME.accentBlue);
 
-  sheet.getRange("A9").setValue("FIRE & CASH FLOW CONFIG").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
+  sheet.getRange("A11").setValue("FIRE & CASH FLOW CONFIG").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
   const fireConfig = [
     ["Target Monthly FIRE Budget (USD)", 20000],
     ["Estimated Monthly Rental Income (USD)", 0],
     ["Annual Portfolio Return Rate", 0.07]
   ];
-  const fireRange = sheet.getRange(10, 1, fireConfig.length, 2);
+  const fireRange = sheet.getRange(12, 1, fireConfig.length, 2);
   fireRange.setValues(fireConfig);
   styleRow(fireRange, THEME.kpiCardBg);
-  sheet.getRange(10, 2).setNumberFormat("$#,##0");
-  sheet.getRange(11, 2).setNumberFormat("$#,##0");
-  sheet.getRange(12, 2).setNumberFormat("0.00%");
+  sheet.getRange(12, 2).setNumberFormat("$#,##0");
+  sheet.getRange(13, 2).setNumberFormat("$#,##0");
+  sheet.getRange(14, 2).setNumberFormat("0.00%");
 
-  sheet.getRange("A13").setValue("DASHBOARD CURRENCY CONFIG").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
+  sheet.getRange("A15").setValue("DASHBOARD CURRENCY CONFIG").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
   const currencyConfig = [
     ["Secondary Currency (Card 2)", (DASHBOARD_CONFIG.secondaryCurrencies[0] || "CAD")],
     ["Secondary Currency (Card 3)", (DASHBOARD_CONFIG.secondaryCurrencies[1] || "INR")]
   ];
-  const currRange = sheet.getRange(14, 1, currencyConfig.length, 2);
+  const currRange = sheet.getRange(16, 1, currencyConfig.length, 2);
   currRange.setValues(currencyConfig);
   styleRow(currRange, THEME.kpiCardBg);
-  sheet.getRange("B14").setNote("Examples: CAD, EUR, GBP, AUD, JPY, SGD, INR, MXN, CHF");
-  sheet.getRange("B15").setNote("Examples: CAD, EUR, GBP, AUD, JPY, SGD, INR, MXN, CHF");
+  sheet.getRange("B16").setNote("Examples: CAD, EUR, GBP, AUD, JPY, SGD, INR, MXN, CHF");
+  sheet.getRange("B17").setNote("Examples: CAD, EUR, GBP, AUD, JPY, SGD, INR, MXN, CHF");
 
-  sheet.getRange("A17").setValue("REAL ESTATE ZPID MAPPING").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
-  sheet.getRange("A18:B18")
+  sheet.getRange("A19").setValue("REAL ESTATE ZPID MAPPING").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
+  sheet.getRange("A20:B20")
     .setValues([["Account Name (Must match Dashboard exactly)", "ZPID"]])
     .setBackground(THEME.headerBg).setFontColor(THEME.headerText).setFontWeight("bold");
 
@@ -272,7 +425,7 @@ function buildSettingsTab() {
     ["Primary Residence", "12345678"],
     ["Investment Property 1", "87654321"]
   ];
-  sheet.getRange(19, 1, sampleMapping.length, 2).setValues(sampleMapping);
+  sheet.getRange(21, 1, sampleMapping.length, 2).setValues(sampleMapping);
 
   sheet.setColumnWidth(1, 350);
   sheet.setColumnWidth(2, 350);
@@ -331,7 +484,7 @@ function buildPortfolioTracker() {
   sheet.getRange(`${c0.val}3`).setFormula('=SUMIFS(H7:H5000,J7:J5000,"Active")')
     .setNumberFormat(USD_ABBR_FMT).setFontColor(s0.subFg).setFontSize(11);
 
-  const SETTINGS_CURRENCY_CELLS = ["'Settings & Config'!B14", "'Settings & Config'!B15"];
+  const SETTINGS_CURRENCY_CELLS = ["'Settings & Config'!B16", "'Settings & Config'!B17"];
   SETTINGS_CURRENCY_CELLS.slice(0, 2).forEach((settingsCell, idx) => {
     const sn = CARD_STYLES[idx + 1]; const cn = CARD_LAYOUT[idx + 1];
     sheet.getRange(cn.bg).setBackground(sn.bg);
@@ -524,7 +677,7 @@ function buildCashFlowTab() {
   const kpiFormulas = [
     [`=IFERROR(AVERAGEIF(C9:C10000,">0"),0)`],
     [`=IFERROR(SUMPRODUCT((A9:A10000>=TODAY()-365)*(C9:C10000>0)*(C9:C10000)),0)`],
-    [`=IFERROR('Settings & Config'!B10, 20000)`],
+    [`=IFERROR('Settings & Config'!B12, 20000)`],
     [`=IFERROR((B2*12)/'Dashboard & Ledger'!B2, 0)`]
   ];
   sheet.getRange(2, 2, kpiFormulas.length, 1).setFormulas(kpiFormulas);

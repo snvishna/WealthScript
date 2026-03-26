@@ -53,12 +53,17 @@ Every snapshot silently triggers **two** independent backups:
 ### 1. GitHub Gist (Developer-Friendly)
 * Your entire ledger is serialized to JSON and pushed to a **private GitHub Gist** via the GitHub API.
 * Provides full version-controlled diff history — you can see exactly what changed each month.
-* **Setup:** Paste a GitHub PAT (with `gist` scope) into `CLOUD_SYNC_CONFIG.githubPAT` in `code.gs` before running First Time Setup. The script auto-creates a Secret Gist for you.
+* **Setup (Guided Wizard):**
+  1. Click **WealthScript > 🔐 Setup GitHub Backup** from the menu bar.
+  2. A new browser tab opens to GitHub's token creation page with `gist` scope pre-selected.
+  3. Click "Generate token", copy it, and paste it into the dialog that appears back in your Sheet.
+  4. The wizard validates the token, auto-creates a private Gist, and populates your Settings tab with the credentials and a **clickable hyperlink** to your live Gist.
 * If no PAT is configured, Gist backup silently skips — no errors.
 
 ### 2. Google Drive (Zero-Config)
 * A dated JSON file (e.g., `net_worth_2026-03-24T20-00.json`) is saved to a `WealthScript — Backups` folder in your Google Drive.
 * **No API keys or tokens needed** — uses your existing Google auth context.
+* **Setup:** Click **WealthScript > 📁 Setup Google Drive Backup** to create the folder and add a **clickable hyperlink** to your Settings tab.
 * Files are ~2KB each; even 5 years of monthly snapshots is under 2MB.
 
 ### Manual Backup
@@ -96,13 +101,15 @@ From the **WealthScript** menu, click **☁️ Force Cloud Backup** to trigger b
 | Real Estate API | B2 | RapidAPI Key | `PASTE_KEY_HERE` |
 | Real Estate API | B3 | RapidAPI Host | `real-estate101.p.rapidapi.com` |
 | Cloud Backup | B6 | GitHub PAT (gist scope) | — |
-| Cloud Backup | B7 | GitHub Gist ID | *(auto-created)* |
-| FIRE & Cash Flow | B10 | Target Monthly FIRE Budget (USD) | `$20,000` |
-| FIRE & Cash Flow | B11 | Estimated Monthly Rental Income (USD) | `$0` |
-| FIRE & Cash Flow | B12 | Annual Portfolio Return Rate | `7.00%` |
-| Dashboard Currency | B14 | Secondary Currency (Card 2) | `CAD` |
-| Dashboard Currency | B15 | Secondary Currency (Card 3) | `INR` |
-| ZPID Mapping | A19:B35 | Property Name → ZPID pairs | sample data |
+| Cloud Backup | B7 | GitHub Gist ID | *(auto-created by wizard)* |
+| Cloud Backup | B8 | GitHub Gist URL | *(clickable hyperlink, set by wizard)* |
+| Cloud Backup | B9 | Google Drive Backup Folder | *(clickable hyperlink, set by wizard)* |
+| FIRE & Cash Flow | B12 | Target Monthly FIRE Budget (USD) | `$20,000` |
+| FIRE & Cash Flow | B13 | Estimated Monthly Rental Income (USD) | `$0` |
+| FIRE & Cash Flow | B14 | Annual Portfolio Return Rate | `7.00%` |
+| Dashboard Currency | B16 | Secondary Currency (Card 2) | `CAD` |
+| Dashboard Currency | B17 | Secondary Currency (Card 3) | `INR` |
+| ZPID Mapping | A21:B37 | Property Name → ZPID pairs | sample data |
 
 ### Phase 4: Enable Native Tables & Grouping
 1. On `Dashboard & Ledger`, select all data rows (Row 7+).
