@@ -71,7 +71,9 @@ From the **WealthScript** menu, click **☁️ Force Cloud Backup** to trigger b
 ### Phase 1: Deploy the Engine
 1. Create a blank [Google Sheet](https://sheets.new).
 2. Go to **Extensions > Apps Script**.
-3. Delete the default code. Paste the contents of `code.gs` from this repository.
+3. Delete the default code. Open the following link and paste the **entire contents** into the Apps Script editor:
+   👉 **[deploy/code.gs](./deploy/code.gs)** 
+   *(Note: This distribution file is automatically compiled from the `src/` modules for easy installation).*
 4. *(Optional)* Paste your GitHub PAT into the `CLOUD_SYNC_CONFIG` block at the top of the file.
 5. Click **Save**. Close the Apps Script tab. **Refresh the sheet.**
 

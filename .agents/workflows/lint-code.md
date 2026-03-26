@@ -1,12 +1,12 @@
 ---
-description: Performs a semantic, architectural code review on the current state of `code.gs` against our global coding standards.
+description: Performs a semantic, architectural code review on the current state of `src/**/*.gs` against our global coding standards.
 ---
 
 # Context
 Reference the established engineering principles here: `@.agents/rules/apps-script-standards.md`
 
 # Steps
-1. **Analyze:** Read the latest version of `code.gs`.
+1. **Analyze:** Read the latest version of all files in `src/`.
 2. **Evaluate Architecture:** - Check for global scope pollution (are there loose functions that should be in a Class/IIFE?).
    - Verify Separation of Concerns (is UI logic separated from Data fetching?).
 3. **Evaluate SOLID Principles:**

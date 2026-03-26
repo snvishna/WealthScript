@@ -10,7 +10,7 @@ You must execute the following steps sequentially. If any step fails, ABORT the 
 
 2. **Test Execution:**
    - Execute the logic defined in `@.agents/workflows/generate-tests.md`.
-   - Simulate a run of the newly generated test functions. If any `Assert` throws an error, ABORT the pipeline, fix the underlying logic in `code.gs`, and restart the pipeline.
+   - Simulate a run of the newly generated test functions. If any `Assert` throws an error, ABORT the pipeline, fix the underlying logic in `src/**/*.gs`, and restart the pipeline.
    
 3. **Pre-Flight Check (Linting):**
    - Execute the logic defined in `@.agents/workflows/lint-code.md`.
@@ -20,10 +20,13 @@ You must execute the following steps sequentially. If any step fails, ABORT the 
    - Execute the logic defined in `@.agents/workflows/sync-readme.md`.
    - Ensure `README.md` reflects the absolute latest state of the codebase, including any new configurations required in the Settings tab.
 
-5. **Semantic Versioning & Commit:**
+5. **Build Artifacts:**
+   - Execute `./scripts/build.sh` to compile all `src/` modules into the distributable `deploy/code.gs` file.
+
+6. **Semantic Versioning & Commit:**
    - Analyze the diff of all staged and unstaged files.
    - Generate a professional, Conventional Commits formatted commit message (e.g., `feat(tracker): add AI insights pipeline`).
    - Execute `git add .` followed by `git commit -m "<your generated message>"`.
 
-6. **Confirmation:**
-   - Output a success matrix to the chat, confirming the linting passed, docs were updated, and the hash of the new commit.
+7. **Confirmation:**
+   - Output a success matrix to the chat, confirming the linting passed, documentation synced, artifacts built, and the hash of the new commit.

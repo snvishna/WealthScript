@@ -1,10 +1,51 @@
 /**
  * ==========================================
- * GLOBAL CONFIGURATION: DEFAULT STARTER DATA
+ * GLOBAL CONFIGURATION: THEME & ACCOUNTS
  * ==========================================
- * Edit this array to change the default accounts generated during First Time Setup.
- * Format: ["Account Name", "Asset Class", "Currency", Initial Capital, Current Value, "", Tax Rate, "", "", "Active", "Remarks"]
  */
+
+const THEME = {
+  canvas: "#F8FAFC",
+  headerBg: "#2563EB",
+  headerText: "#FFFFFF",
+  kpiCardBg: "#FFFFFF",
+  mutedText: "#64748B",
+  accentBlue: "#2563EB",
+  accentEmerald: "#059669",
+  accentViolet: "#7C3AED",
+  quickStats: {
+    liquidBg: "#E0F2FE", liquidFg: "#0369A1",
+    lockedBg: "#FEF2F2", lockedFg: "#BE123C",
+    fireBg: "#FAF5FF",   fireFg: "#7E22CE"
+  },
+  assetRows: {
+    "Cash":           "#ECFDF5", 
+    "Brokerage":      "#EFF6FF",
+    "Retirement":     "#EEF2FF", 
+    "Health Savings": "#F0FDFA",
+    "Real Estate":    "#FFF7ED", 
+    "Crypto":         "#FDF2F8",
+    "Commodity":      "#FEFCE8", 
+    "Insurance":      "#FAF5FF",
+    "Receivable":     "#ECFEFF", 
+    "Liability":      "#FEF2F2"
+  },
+  assetText: "#0F172A",
+  negativeValueBg: "#fff1f2",
+  negativeValueFg: "#be123c",
+  accentBar: "#E2E8F0",
+  titleBanner: { bg: "#1E293B", text: "#F8FAFC" },
+  charts: {
+    donut: ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6', '#F43F5E', '#9CA3AF'],
+    area: ['#3B82F6'],
+    stacked: ['#10B981', '#F43F5E'],
+    gridlines: "transparent",
+    axisText: "#64748B",
+    legendText: "#0F172A"
+  }
+};
+
+/** Edit this array to change the default accounts generated during First Time Setup. */
 const DEFAULT_PORTFOLIO_DATA = [
   // --- Cash & Checking ---
   ["Primary Checking",        "Cash",          "USD", 0,          8000,       "", 0.00, "", "", "Active", "Everyday expenses account"],
@@ -41,7 +82,6 @@ const DEFAULT_PORTFOLIO_DATA = [
   ["Primary Mortgage",        "Liability",     "USD", 0,          -380000,    "", 0.00, "", "", "Active", "Home mortgage — 30yr fixed"],
 ];
 
-
 /**
  * CLOUD DISASTER RECOVERY CONFIGURATION
  * Provide your GitHub PAT here before running First Time Setup to auto-create your backup Gist.
@@ -61,14 +101,6 @@ const DASHBOARD_CONFIG = {
   secondaryCurrencies: ["CAD", "INR"], // ← Change these to your currencies
   fireTargetUSD: 3000000,              // ← Your FIRE / net worth target in USD
 };
-
-
-/**
- * ==========================================
- * APP CORE FUNCTIONALITY
- * ==========================================
- */
-
 /**
  * Creates the custom menu in the spreadsheet UI.
  */
@@ -118,15 +150,67 @@ function runFirstTimeSetup() {
 
   SpreadsheetApp.getUi().alert("Setup Complete!\n\n1. Review the 'Settings & Config' tab.\n2. Highlight rows 7+ on your Dashboard and click Format > Convert to Table.");
 }
+/**
+ * Fetches Zestimates using config from the Settings tab.
+ */
+function updateRealEstatePrices() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("Dashboard & Ledger");
+  const configSheet = ss.getSheetByName("Settings & Config");
+  
+  if(!configSheet) return SpreadsheetApp.getUi().alert("Settings tab missing. Run First Time Setup.");
 
+  const apiKey = configSheet.getRange("B2").getValue();
+  const apiHost = configSheet.getRange("B3").getValue();
+  
+  if (!apiKey || apiKey === "PASTE_KEY_HERE") return; 
+
+  const propData = configSheet.getRange("A19:B35").getValues();
+  const properties = [];
+  for (let i = 0; i < propData.length; i++) {
+    if (propData[i][0] && propData[i][1]) {
+      properties.push({ name: String(propData[i][0]), zpid: String(propData[i][1]) });
+    }
+  }
+
+  const accountNames = sheet.getRange("A1:A100").getValues().flat();
+  const currentValues = sheet.getRange("E1:E100").getValues();
+  let updated = false;
+
+  properties.forEach(prop => {
+    try {
+      const url = `https://${apiHost}/api/property-details/byzpid?zpid=${prop.zpid}`;
+      const options = {
+        method: 'GET',
+        headers: {
+          'X-RapidAPI-Key': apiKey,
+          'X-RapidAPI-Host': apiHost
+        },
+        muteHttpExceptions: true
+      };
+
+      const response = UrlFetchApp.fetch(url, options);
+      if (response.getResponseCode() === 200) {
+        const data = JSON.parse(response.getContentText());
+        const zestimate = data.property.zestimate; 
+        const targetRowIdx = accountNames.indexOf(prop.name); 
+        
+        if (targetRowIdx >= 0 && zestimate) {
+          currentValues[targetRowIdx][0] = zestimate;
+          updated = true;
+        }
+      }
+    } catch (e) {
+      Logger.log(`Script crashed on ${prop.name}: ${e}`);
+    }
+  });
+
+  if (updated) {
+    sheet.getRange("E1:E100").setValues(currentValues);
+  }
+}
 /**
  * 1. Builds the Settings & Config Tab.
- * Layout:
- *   Rows 1-3:   Real Estate API config
- *   Rows 5-7:   Cloud Backup config
- *   Rows 9-12:  FIRE & Cash Flow config  ← NEW (Epic 0)
- *   Rows 14-15: ZPID mapping header
- *   Rows 16+:   ZPID mapping data
  */
 function buildSettingsTab() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -134,7 +218,9 @@ function buildSettingsTab() {
   if (!sheet) sheet = ss.insertSheet("Settings & Config");
   else sheet.clear();
 
-  // --- Auto-Gist Creation Logic ---
+  sheet.setHiddenGridlines(true);
+  sheet.getRange("A1:C100").setBackground(THEME.canvas);
+
   let pat = CLOUD_SYNC_CONFIG.githubPAT || "PASTE_GITHUB_TOKEN_HERE";
   let gistId = CLOUD_SYNC_CONFIG.gistId;
 
@@ -143,21 +229,17 @@ function buildSettingsTab() {
   }
   if (!gistId) gistId = "PASTE_GIST_ID_HERE";
 
-  // Helper to apply a standard config-row style
   const styleRow = (range, bg) => range.setBackground(bg).setVerticalAlignment("middle");
 
-  // --- Section 1: Real Estate API ---
-  sheet.getRange("A1").setValue("REAL ESTATE API CONFIG").setFontWeight("bold").setFontSize(12);
-  styleRow(sheet.getRange("A2:B2"), "#f3f4f6").setValues([["RapidAPI Key", "PASTE_KEY_HERE"]]);
-  styleRow(sheet.getRange("A3:B3"), "#f3f4f6").setValues([["RapidAPI Host", "real-estate101.p.rapidapi.com"]]);
+  sheet.getRange("A1").setValue("REAL ESTATE API CONFIG").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
+  styleRow(sheet.getRange("A2:B2"), THEME.kpiCardBg).setValues([["RapidAPI Key", "PASTE_KEY_HERE"]]);
+  styleRow(sheet.getRange("A3:B3"), THEME.kpiCardBg).setValues([["RapidAPI Host", "real-estate101.p.rapidapi.com"]]);
 
-  // --- Section 2: Cloud Backup ---
-  sheet.getRange("A5").setValue("CLOUD BACKUP CONFIG (DISASTER RECOVERY)").setFontWeight("bold").setFontSize(12);
-  styleRow(sheet.getRange("A6:B6"), "#f8fafc").setValues([["GitHub PAT (gist scope)", pat]]);
-  styleRow(sheet.getRange("A7:B7"), "#f8fafc").setValues([["GitHub Gist ID", gistId]]);
+  sheet.getRange("A5").setValue("CLOUD BACKUP CONFIG (DISASTER RECOVERY)").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
+  styleRow(sheet.getRange("A6:B6"), THEME.kpiCardBg).setValues([["GitHub PAT (gist scope)", pat]]);
+  styleRow(sheet.getRange("A7:B7"), THEME.kpiCardBg).setValues([["GitHub Gist ID", gistId]]);
 
-  // --- Section 3: FIRE & Cash Flow Config ---
-  sheet.getRange("A9").setValue("FIRE & CASH FLOW CONFIG").setFontWeight("bold").setFontSize(12);
+  sheet.getRange("A9").setValue("FIRE & CASH FLOW CONFIG").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
   const fireConfig = [
     ["Target Monthly FIRE Budget (USD)", 20000],
     ["Estimated Monthly Rental Income (USD)", 0],
@@ -165,32 +247,26 @@ function buildSettingsTab() {
   ];
   const fireRange = sheet.getRange(10, 1, fireConfig.length, 2);
   fireRange.setValues(fireConfig);
-  styleRow(fireRange, "#f0fdf4");
+  styleRow(fireRange, THEME.kpiCardBg);
   sheet.getRange(10, 2).setNumberFormat("$#,##0");
   sheet.getRange(11, 2).setNumberFormat("$#,##0");
   sheet.getRange(12, 2).setNumberFormat("0.00%");
 
-  // --- Section 4: Dashboard Currency Config ---
-  // Edit the values in column B to change which secondary currencies appear
-  // in the top KPI cards of the Dashboard & Ledger tab. Any valid
-  // GOOGLEFINANCE currency code works (EUR, GBP, AUD, JPY, SGD, MXN, etc.).
-  // Changing a value here instantly updates the dashboard — no re-run needed.
-  sheet.getRange("A13").setValue("DASHBOARD CURRENCY CONFIG").setFontWeight("bold").setFontSize(12);
+  sheet.getRange("A13").setValue("DASHBOARD CURRENCY CONFIG").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
   const currencyConfig = [
     ["Secondary Currency (Card 2)", (DASHBOARD_CONFIG.secondaryCurrencies[0] || "CAD")],
     ["Secondary Currency (Card 3)", (DASHBOARD_CONFIG.secondaryCurrencies[1] || "INR")]
   ];
   const currRange = sheet.getRange(14, 1, currencyConfig.length, 2);
   currRange.setValues(currencyConfig);
-  styleRow(currRange, "#eff6ff");
+  styleRow(currRange, THEME.kpiCardBg);
   sheet.getRange("B14").setNote("Examples: CAD, EUR, GBP, AUD, JPY, SGD, INR, MXN, CHF");
   sheet.getRange("B15").setNote("Examples: CAD, EUR, GBP, AUD, JPY, SGD, INR, MXN, CHF");
 
-  // --- Section 5: ZPID Mapping ---
-  sheet.getRange("A17").setValue("REAL ESTATE ZPID MAPPING").setFontWeight("bold").setFontSize(12);
+  sheet.getRange("A17").setValue("REAL ESTATE ZPID MAPPING").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
   sheet.getRange("A18:B18")
     .setValues([["Account Name (Must match Dashboard exactly)", "ZPID"]])
-    .setBackground("#1e293b").setFontColor("white").setFontWeight("bold");
+    .setBackground(THEME.headerBg).setFontColor(THEME.headerText).setFontWeight("bold");
 
   const sampleMapping = [
     ["Primary Residence", "12345678"],
@@ -203,42 +279,7 @@ function buildSettingsTab() {
 }
 
 /**
- * Helper: Creates a Secret Gist via GitHub API
- */
-function autoCreateGist(pat) {
-  const payload = {
-    "description": "WealthScript Automated Backup",
-    "public": false,
-    "files": { "net_worth_backup.json": { "content": "{\n  \"status\": \"Initialized\"\n}" } }
-  };
-  const options = {
-    "method": "POST",
-    "headers": {
-      "Authorization": "Bearer " + pat,
-      "Accept": "application/vnd.github.v3+json",
-      "Content-Type": "application/json"
-    },
-    "payload": JSON.stringify(payload),
-    "muteHttpExceptions": true
-  };
-
-  try {
-    const response = UrlFetchApp.fetch("https://api.github.com/gists", options);
-    if (response.getResponseCode() === 201) {
-      return JSON.parse(response.getContentText()).id;
-    } else {
-      Logger.log("Failed to create Gist: " + response.getContentText());
-      return "";
-    }
-  } catch (e) {
-    Logger.log("Error creating Gist: " + e.message);
-    return "";
-  }
-}
-
-/**
  * 2. Builds the Dashboard & Ledger with full professional formatting.
- * Rows 1-4: KPI summary dashboard. Row 5: gap. Row 6: table header. Row 7+: data.
  */
 function buildPortfolioTracker() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -246,46 +287,34 @@ function buildPortfolioTracker() {
   if (!sheet) sheet = ss.insertSheet("Dashboard & Ledger");
   else sheet.clear();
 
-  // ── Row 1: Title Banner ─────────────────────────────────────────────────────
+  sheet.setHiddenGridlines(true);
+  sheet.getRange("A2:K5").setBackground(THEME.canvas); 
+  
   sheet.getRange("A1:K1").merge()
     .setValue("💰  NET WORTH DASHBOARD")
-    .setBackground("#0f172a").setFontColor("#f1f5f9")
+    .setBackground(THEME.titleBanner.bg).setFontColor(THEME.titleBanner.text)
     .setFontWeight("bold").setFontSize(15)
     .setHorizontalAlignment("center").setVerticalAlignment("middle");
   sheet.setRowHeight(1, 44);
 
-  // ── Rows 2-3: KPI Cards — USD (primary) + up to 2 secondary currencies ──────
-  //
-  // Card layout over 11 columns:
-  //   Card 0 (USD):   cols A-C  — label col A, value col B
-  //   Card 1 (Cur1):  cols D-G  — label col D, value col E
-  //   Card 2 (Cur2):  cols H-K  — label col H, value col I
-  //
-  // To change secondary currencies edit DASHBOARD_CONFIG.secondaryCurrencies
-  // at the top of this file. Any GOOGLEFINANCE currency code works (EUR, GBP…).
-
-  /** Abbreviated number format: $1.55M / $320K / $42 */
   const USD_ABBR_FMT = '[>999999]"$"0.00,,"M";[>999]"$"0,"K";"$"0';
   const PLAIN_ABBR_FMT = '[>999999]0.00,,"M";[>999]0,"K";0.00';
 
-  /** Returns the currency symbol for common codes; defaults to the code string. */
   const currencySymbol = (code) => {
     const SYM = { USD:'$', EUR:'€', GBP:'£', INR:'₹', JPY:'¥',
                   CAD:'CA$', AUD:'A$', SGD:'S$', CHF:'Fr', MXN:'MX$' };
     return SYM[code.toUpperCase()] || code;
   };
 
-  /** Returns an abbreviated Sheets number format for any currency code. */
   const abbrFmt = (code) => {
     const s = currencySymbol(code);
     return `[>999999]"${s}"0.00,,"M";[>999]"${s}"0,"K";"${s}"0`;
   };
 
-  // Card style definitions (index 0 = USD, 1 = first secondary, 2 = second)
   const CARD_STYLES = [
-    { bg:"#1e3a5f", labelFg:"#93c5fd", valueFg:"#ffffff", subFg:"#94a3b8" }, // blue
-    { bg:"#14532d", labelFg:"#86efac", valueFg:"#ffffff", subFg:"#bbf7d0" }, // green
-    { bg:"#312e81", labelFg:"#c4b5fd", valueFg:"#ffffff", subFg:"#a5b4fc" }, // indigo
+    { bg:THEME.kpiCardBg, labelFg:THEME.mutedText, valueFg:THEME.accentBlue, subFg:THEME.mutedText }, 
+    { bg:THEME.kpiCardBg, labelFg:THEME.mutedText, valueFg:THEME.accentEmerald, subFg:THEME.mutedText }, 
+    { bg:THEME.kpiCardBg, labelFg:THEME.mutedText, valueFg:THEME.accentViolet, subFg:THEME.mutedText }, 
   ];
   const CARD_LAYOUT = [
     { bg:"A2:C3", lbl:"A", val:"B" },
@@ -293,7 +322,6 @@ function buildPortfolioTracker() {
     { bg:"H2:K3", lbl:"H", val:"I" },
   ];
 
-  // USD card (always first — primary currency)
   const s0 = CARD_STYLES[0]; const c0 = CARD_LAYOUT[0];
   sheet.getRange(c0.bg).setBackground(s0.bg);
   sheet.getRange(`${c0.lbl}2`).setValue("Net Worth (USD)").setFontColor(s0.labelFg).setFontWeight("bold").setFontSize(9);
@@ -303,17 +331,13 @@ function buildPortfolioTracker() {
   sheet.getRange(`${c0.val}3`).setFormula('=SUMIFS(H7:H5000,J7:J5000,"Active")')
     .setNumberFormat(USD_ABBR_FMT).setFontColor(s0.subFg).setFontSize(11);
 
-  // Secondary currency cards — labels and formulas reference Settings tab
-  // directly so CHANGING A CURRENCY IN SETTINGS INSTANTLY UPDATES THE CARD.
   const SETTINGS_CURRENCY_CELLS = ["'Settings & Config'!B14", "'Settings & Config'!B15"];
   SETTINGS_CURRENCY_CELLS.slice(0, 2).forEach((settingsCell, idx) => {
     const sn = CARD_STYLES[idx + 1]; const cn = CARD_LAYOUT[idx + 1];
     sheet.getRange(cn.bg).setBackground(sn.bg);
-    // Label formula: dynamically shows the currency code from Settings
     sheet.getRange(`${cn.lbl}2`)
       .setFormula(`="Net Worth ("&${settingsCell}&")"`)  
       .setFontColor(sn.labelFg).setFontWeight("bold").setFontSize(9);
-    // Value formula: GOOGLEFINANCE uses the currency code from Settings
     sheet.getRange(`${cn.val}2`)
       .setFormula(`=B2*IFERROR(GOOGLEFINANCE("CURRENCY:USD"&${settingsCell}),1)`)
       .setNumberFormat(PLAIN_ABBR_FMT).setFontColor(sn.valueFg).setFontSize(14).setFontWeight("bold");
@@ -327,46 +351,39 @@ function buildPortfolioTracker() {
 
   sheet.setRowHeight(2, 38); sheet.setRowHeight(3, 28);
 
-  // ── Row 4: Liquid / Locked / FIRE quick-stats ──────────────────────────────
-  // IMPORTANT: use bounded ranges (B7:B5000, not B:B) to avoid circular
-  // dependency — this cell is in column B, which whole-col refs would include.
   const LIQUID_CLASSES = ['"Cash"','"Brokerage"','"Crypto"','"Receivable"'];
   const liquidParts = LIQUID_CLASSES.map(c => `SUMIFS(I7:I5000,J7:J5000,"Active",B7:B5000,${c})`).join('+');
   const fireTarget  = DASHBOARD_CONFIG.fireTargetUSD || 3000000;
   const fireLabel   = `🔥 FIRE Progress ($${(fireTarget / 1e6).toFixed(0)}M)`;
 
-  sheet.getRange("A4:C4").setBackground("#f0f9ff");
-  sheet.getRange("A4").setValue("🌊 Liquid Net Worth").setFontColor("#0369a1").setFontWeight("bold").setFontSize(9);
+  sheet.getRange("A4:C4").setBackground(THEME.quickStats.liquidBg);
+  sheet.getRange("A4").setValue("🌊 Liquid Net Worth").setFontColor(THEME.quickStats.liquidFg).setFontWeight("bold").setFontSize(9);
   sheet.getRange("B4").setFormula(`=${liquidParts}`)
-    .setNumberFormat(USD_ABBR_FMT).setFontColor("#0369a1").setFontSize(11).setFontWeight("bold");
+    .setNumberFormat(USD_ABBR_FMT).setFontColor(THEME.quickStats.liquidFg).setFontSize(11).setFontWeight("bold");
 
-  sheet.getRange("D4:G4").setBackground("#f0fdf4");
-  sheet.getRange("D4").setValue("🔒 Locked Net Worth").setFontColor("#15803d").setFontWeight("bold").setFontSize(9);
+  sheet.getRange("D4:G4").setBackground(THEME.quickStats.lockedBg);
+  sheet.getRange("D4").setValue("🔒 Locked Net Worth").setFontColor(THEME.quickStats.lockedFg).setFontWeight("bold").setFontSize(9);
   sheet.getRange("E4").setFormula(`=SUMIFS(I7:I5000,J7:J5000,"Active")-(${liquidParts})`)
-    .setNumberFormat(USD_ABBR_FMT).setFontColor("#15803d").setFontSize(11).setFontWeight("bold");
+    .setNumberFormat(USD_ABBR_FMT).setFontColor(THEME.quickStats.lockedFg).setFontSize(11).setFontWeight("bold");
 
-  sheet.getRange("H4:K4").setBackground("#fdf4ff");
-  sheet.getRange("H4").setValue(fireLabel).setFontColor("#7e22ce").setFontWeight("bold").setFontSize(9);
+  sheet.getRange("H4:K4").setBackground(THEME.quickStats.fireBg);
+  sheet.getRange("H4").setValue(fireLabel).setFontColor(THEME.quickStats.fireFg).setFontWeight("bold").setFontSize(9);
   sheet.getRange("I4").setFormula(`=IFERROR(SUMIFS(I7:I5000,J7:J5000,"Active")/${fireTarget},0)`)
-    .setNumberFormat("0.0%").setFontColor("#7e22ce").setFontSize(11).setFontWeight("bold");
+    .setNumberFormat("0.0%").setFontColor(THEME.quickStats.fireFg).setFontSize(11).setFontWeight("bold");
 
   sheet.setRowHeight(4, 28);
 
-  // ── Row 5: Thin accent bar separating header from data table ───────────────
-  sheet.getRange("A5:K5").setBackground("#3b82f6");
+  sheet.getRange("A5:K5").setBackground(THEME.accentBar);
   sheet.setRowHeight(5, 3);
 
-
-  // ── Row 6: Table Header ────────────────────────────────────────────────────
   const headers = ["Account","Asset Class","Currency","Initial Capital","Current Value","Exchange Rate (to USD)","Tax Rate","Gross Worth (USD)","Net Worth (USD)","Status","Remarks"];
   sheet.getRange(6, 1, 1, headers.length)
     .setValues([headers])
-    .setBackground("#0f172a").setFontColor("#f8fafc")
+    .setBackground(THEME.headerBg).setFontColor(THEME.headerText)
     .setFontWeight("bold").setFontSize(11)
     .setHorizontalAlignment("center").setVerticalAlignment("middle");
   sheet.setRowHeight(6, 36);
 
-  // ── Rows 7+: Data & Computed Formulas ─────────────────────────────────────
   sheet.getRange(7, 1, DEFAULT_PORTFOLIO_DATA.length, headers.length).setValues(DEFAULT_PORTFOLIO_DATA);
 
   const NUM_ROWS = 70;
@@ -381,53 +398,40 @@ function buildPortfolioTracker() {
   sheet.getRange(7, 8, NUM_ROWS, 1).setFormulas(gross);
   sheet.getRange(7, 9, NUM_ROWS, 1).setFormulas(net);
 
-  // ── Number Formats ────────────────────────────────────────────────────────
   const lastDataRow = 6 + NUM_ROWS;
-  sheet.getRange(7, 4, NUM_ROWS, 1).setNumberFormat("#,##0.00");       // Initial Capital
-  sheet.getRange(7, 5, NUM_ROWS, 1).setNumberFormat("#,##0.00");       // Current Value
-  sheet.getRange(7, 6, NUM_ROWS, 1).setNumberFormat("0.0000");          // Exchange Rate
-  sheet.getRange(7, 7, NUM_ROWS, 1).setNumberFormat("0.00%");           // Tax Rate
-  sheet.getRange(7, 8, NUM_ROWS, 1).setNumberFormat('"$"#,##0.00');    // Gross Worth
-  sheet.getRange(7, 9, NUM_ROWS, 1).setNumberFormat('"$"#,##0.00');    // Net Worth
+  sheet.getRange(7, 4, NUM_ROWS, 1).setNumberFormat("#,##0.00");       
+  sheet.getRange(7, 5, NUM_ROWS, 1).setNumberFormat("#,##0.00");       
+  sheet.getRange(7, 6, NUM_ROWS, 1).setNumberFormat("0.0000");          
+  sheet.getRange(7, 7, NUM_ROWS, 1).setNumberFormat("0.00%");           
+  sheet.getRange(7, 8, NUM_ROWS, 1).setNumberFormat('"$"#,##0.00');    
+  sheet.getRange(7, 9, NUM_ROWS, 1).setNumberFormat('"$"#,##0.00');    
 
-  // ── Conditional Formatting: Asset Class Color Coding ───────────────────────
   const assetClassRange = sheet.getRange(7, 2, NUM_ROWS, 1);
-  const classColors = [
-    ["Cash",           "#dcfce7"], ["Brokerage",   "#dbeafe"],
-    ["Retirement",     "#ede9fe"], ["Health Savings","#bbf7d0"],
-    ["Real Estate",    "#fef9c3"], ["Crypto",       "#fed7aa"],
-    ["Commodity",      "#fef3c7"], ["Insurance",    "#e0e7ff"],
-    ["Receivable",     "#d1fae5"], ["Liability",    "#fee2e2"],
-  ];
-  const cfRules = classColors.map(([cls, bg]) =>
+  const cfRules = Object.entries(THEME.assetRows).map(([cls, bg]) =>
     SpreadsheetApp.newConditionalFormatRule()
-      .whenTextEqualTo(cls).setBackground(bg)
+      .whenTextEqualTo(cls).setBackground(bg).setFontColor(THEME.assetText)
       .setRanges([assetClassRange]).build()
   );
-  // Red text for negative net worth values
   cfRules.push(
     SpreadsheetApp.newConditionalFormatRule()
       .whenNumberLessThan(0)
-      .setBackground("#fff1f2").setFontColor("#be123c")
+      .setBackground(THEME.negativeValueBg).setFontColor(THEME.negativeValueFg)
       .setRanges([sheet.getRange(7, 9, NUM_ROWS, 1)]).build()
   );
   sheet.setConditionalFormatRules(cfRules);
 
-  // ── Column Widths & Polish ─────────────────────────────────────────────────
-  sheet.setColumnWidth(1, 220);  // Account
-  sheet.setColumnWidth(2, 135);  // Asset Class
-  sheet.setColumnWidth(3, 90);   // Currency
-  sheet.setColumnWidth(4, 130);  // Initial Capital
-  sheet.setColumnWidth(5, 130);  // Current Value
-  sheet.setColumnWidth(6, 160);  // Exchange Rate
-  sheet.setColumnWidth(7, 90);   // Tax Rate
-  sheet.setColumnWidth(8, 150);  // Gross Worth
-  sheet.setColumnWidth(9, 150);  // Net Worth
-  sheet.setColumnWidth(10, 80);  // Status
-  sheet.setColumnWidth(11, 260); // Remarks
+  sheet.setColumnWidth(1, 220);  
+  sheet.setColumnWidth(2, 135);  
+  sheet.setColumnWidth(3, 90);   
+  sheet.setColumnWidth(4, 130);  
+  sheet.setColumnWidth(5, 130);  
+  sheet.setColumnWidth(6, 160);  
+  sheet.setColumnWidth(7, 90);   
+  sheet.setColumnWidth(8, 150);  
+  sheet.setColumnWidth(9, 150);  
+  sheet.setColumnWidth(10, 80);  
+  sheet.setColumnWidth(11, 260); 
   sheet.setFrozenRows(6);
-  // Note: setFrozenColumns is intentionally omitted — it conflicts with the
-  // full-width merged banner in row 1. Freeze columns manually if needed.
 }
 
 /**
@@ -439,8 +443,10 @@ function buildHoldingsTab() {
   if (!sheet) sheet = ss.insertSheet("Brokerage Holdings");
   else sheet.clear(); 
 
+  sheet.setHiddenGridlines(true);
+  
   const headers = ["Account Name", "Ticker Symbol", "Quantity", "Live Price", "Total Value"];
-  sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setBackground("#0f172a").setFontColor("white").setFontWeight("bold");
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setBackground(THEME.headerBg).setFontColor(THEME.headerText).setFontWeight("bold");
 
   const sampleData = [
     ["Taxable Brokerage", "VTI", 150],
@@ -480,7 +486,11 @@ function buildSnapshotTab() {
     "Date", "Net (USD)", "Liquid (USD)", "Locked (USD)", "Gross (USD)", 
     "Net (CAD)", "Net (INR)", "Total RE (USD)", "Value Δ (USD)", "% Growth", "FIRE Progress", "Auto-Insights", "Manual Notes"
   ];
-  sheet.getRange("A1:M1").setValues([headers]).setBackground("#1e293b").setFontColor("white").setFontWeight("bold");
+  sheet.setHiddenGridlines(true);
+  
+  sheet.getRange("A1:M1").setValues([headers]).setBackground(THEME.headerBg).setFontColor(THEME.headerText).setFontWeight("bold");
+  sheet.getRange("A2:M100").applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, false, false);
+  
   sheet.setColumnWidth(1, 150); 
   sheet.setColumnWidth(12, 350); 
   sheet.setColumnWidth(13, 200); 
@@ -488,10 +498,7 @@ function buildSnapshotTab() {
 }
 
 /**
- * 5. Builds the Cash Flow & Burn Tab (Epic 1).
- * Top section: KPI summary cards (Average Monthly Burn, TTM Expenses,
- *              Target FIRE Budget, Safe Withdrawal Rate).
- * Bottom section: Manual expense ledger with Date / Category / Amount / Notes.
+ * 5. Builds the Cash Flow & Burn Tab
  */
 function buildCashFlowTab() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -499,15 +506,12 @@ function buildCashFlowTab() {
   if (!sheet) sheet = ss.insertSheet("💸 Cash Flow & Burn");
   else sheet.clear();
 
-  // ── Canvas styling ──────────────────────────────────────────────────────────
   sheet.setHiddenGridlines(true);
-  sheet.getRange("A1:F100").setBackground("#f8fafc");
+  sheet.getRange("A1:F100").setBackground(THEME.canvas);
 
-  // ── Section 1: KPI Summary ──────────────────────────────────────────────────
   sheet.getRange("A1").setValue("CASH FLOW & BURN RATE SUMMARY")
-    .setFontWeight("bold").setFontSize(14).setFontColor("#0f172a");
+    .setFontWeight("bold").setFontSize(14).setFontColor(THEME.assetText);
 
-  // KPI label column (A) and value column (B)
   const kpiLabels = [
     "Average Monthly Burn (USD)",
     "TTM (Trailing 12-Month) Expenses (USD)",
@@ -515,41 +519,30 @@ function buildCashFlowTab() {
     "Current Safe Withdrawal Rate"
   ];
   sheet.getRange(2, 1, kpiLabels.length, 1).setValues(kpiLabels.map(l => [l]))
-    .setFontWeight("bold").setFontColor("#334155");
+    .setFontWeight("bold").setFontColor(THEME.mutedText);
 
-  // KPI formulas — reference the ledger table which starts at row 9
-  // C column = Amount (USD), A column = Date
   const kpiFormulas = [
-    // Average monthly burn: average of all positive expense entries
     [`=IFERROR(AVERAGEIF(C9:C10000,">0"),0)`],
-    // TTM: sum of entries where date is within the last 365 days
     [`=IFERROR(SUMPRODUCT((A9:A10000>=TODAY()-365)*(C9:C10000>0)*(C9:C10000)),0)`],
-    // Target FIRE Budget pulled from Settings tab (row 10, col B)
     [`=IFERROR('Settings & Config'!B10, 20000)`],
-    // Safe Withdrawal Rate: annualised burn / current net worth (4% rule reference)
     [`=IFERROR((B2*12)/'Dashboard & Ledger'!B2, 0)`]
   ];
   sheet.getRange(2, 2, kpiFormulas.length, 1).setFormulas(kpiFormulas);
 
-  // Format KPI values
   sheet.getRange("B2:B4").setNumberFormat("$#,##0.00");
   sheet.getRange("B5").setNumberFormat("0.00%");
 
-  // Style KPI card rows
   const kpiCardRange = sheet.getRange(2, 1, kpiLabels.length, 2);
-  kpiCardRange.setBackground("#ffffff").setBorder(true, true, true, true, false, false, "#e2e8f0", SpreadsheetApp.BorderStyle.SOLID);
+  kpiCardRange.setBackground(THEME.kpiCardBg).setBorder(true, true, true, true, false, false, THEME.accentBar, SpreadsheetApp.BorderStyle.SOLID);
 
-  // ── Section Divider ─────────────────────────────────────────────────────────
   sheet.getRange("A7").setValue("EXPENSE LEDGER")
-    .setFontWeight("bold").setFontSize(12).setFontColor("#0f172a");
+    .setFontWeight("bold").setFontSize(12).setFontColor(THEME.assetText);
 
-  // ── Section 2: Expense Ledger ────────────────────────────────────────────────
   const headers = ["Date", "Category", "Amount (USD)", "Notes"];
   const headerRange = sheet.getRange(8, 1, 1, headers.length);
   headerRange.setValues([headers])
-    .setBackground("#1e293b").setFontColor("white").setFontWeight("bold");
+    .setBackground(THEME.headerBg).setFontColor(THEME.headerText).setFontWeight("bold");
 
-  // Sample starter data to illustrate usage
   const sampleExpenses = [
     [new Date(), "Housing", 3500, "Mortgage / Rent"],
     [new Date(), "Groceries", 800, "Monthly groceries"],
@@ -560,24 +553,146 @@ function buildCashFlowTab() {
   const dataRange = sheet.getRange(9, 1, sampleExpenses.length, headers.length);
   dataRange.setValues(sampleExpenses);
 
-  // Format date and currency columns
   sheet.getRange(9, 1, 200, 1).setNumberFormat("mm/dd/yyyy");
   sheet.getRange(9, 3, 200, 1).setNumberFormat("$#,##0.00");
 
-  // Row banding on ledger
   sheet.getRange(9, 1, 200, headers.length)
     .applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, false, false);
 
-  // Freeze the header row and resize columns
   sheet.setFrozenRows(8);
-  sheet.setColumnWidth(1, 120);  // Date
-  sheet.setColumnWidth(2, 200);  // Category
-  sheet.setColumnWidth(3, 160);  // Amount
-  sheet.setColumnWidth(4, 300);  // Notes
+  sheet.setColumnWidth(1, 120);  
+  sheet.setColumnWidth(2, 200);  
+  sheet.setColumnWidth(3, 160);  
+  sheet.setColumnWidth(4, 300);  
 }
-
 /**
- * Executes a manual snapshot. Calculates deltas and generates insights.
+ * Generates professional, full-screen visual dashboards on a dedicated tab.
+ */
+function updateVisualDashboards() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ledgerSheet = ss.getSheetByName("Dashboard & Ledger");
+  const snapSheet = ss.getSheetByName("Snapshots");
+
+  if (!ledgerSheet || !snapSheet) return;
+
+  // 1. Setup the Dedicated UI Tab
+  let dashboardName = "📊 Insights & Analytics";
+  let uiSheet = ss.getSheetByName(dashboardName);
+  
+  if (!uiSheet) {
+    uiSheet = ss.insertSheet(dashboardName, 1); 
+  } else {
+    const existingCharts = uiSheet.getCharts();
+    for (let i = 0; i < existingCharts.length; i++) {
+      uiSheet.removeChart(existingCharts[i]);
+    }
+    uiSheet.clear(); 
+  }
+
+  // Format the Dashboard Canvas
+  uiSheet.getRange("A1:Z100").setBackground(THEME.canvas); 
+  uiSheet.getRange("B2").setValue("PORTFOLIO ANALYTICS & TRENDS").setFontWeight("bold").setFontSize(16).setFontColor(THEME.assetText);
+  
+  uiSheet.setHiddenGridlines(true);
+
+  // 2. Setup the Hidden Data Backend
+  let dataSheet = ss.getSheetByName("ChartData");
+  if (!dataSheet) {
+    dataSheet = ss.insertSheet("ChartData");
+    dataSheet.hideSheet(); 
+  } else {
+    dataSheet.clear();
+  }
+
+  // 3. Aggregate Live Asset Allocation
+  const dataRange = ledgerSheet.getRange("A7:J60").getValues();
+  const allocMap = {};
+  
+  for (let i = 0; i < dataRange.length; i++) {
+    let assetClass = String(dataRange[i][1]);
+    let netVal = Number(dataRange[i][8]); 
+    let status = String(dataRange[i][9]); 
+    
+    if (status === "Active" && !isNaN(netVal) && netVal > 0 && assetClass !== "") { 
+      if (!allocMap[assetClass]) allocMap[assetClass] = 0;
+      allocMap[assetClass] += netVal;
+    }
+  }
+
+  const pieData = [["Asset Class", "Net Value"]];
+  for (const [key, value] of Object.entries(allocMap)) {
+    pieData.push([key, value]);
+  }
+  dataSheet.getRange(1, 1, pieData.length, 2).setValues(pieData);
+
+  // --- CHART BUILDERS ---
+
+  // A. Asset Allocation (Modern Minimalist Donut)
+  const lastAssetRow = ledgerSheet.getLastRow();
+  if (lastAssetRow > 6) {
+    const pieChart = uiSheet.newChart()
+      .asPieChart()
+      .addRange(ledgerSheet.getRange(7, 2, lastAssetRow - 6, 1)) // Asset Class
+      .addRange(ledgerSheet.getRange(7, 9, lastAssetRow - 6, 1)) // Net Worth (USD)
+      .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_ROWS)
+      .setOption('title', 'Asset Allocation Framework')
+      .setOption('pieHole', 0.45)
+      .setOption('colors', THEME.charts.donut)
+      .setOption('pieSliceBorderColor', "transparent")
+      .setOption('backgroundColor', { fill: 'transparent' })
+      .setOption('chartArea', {left: '10%', top: '15%', width: '80%', height: '70%'})
+      .setOption('legend', {position: 'labeled', textStyle: {fontSize: 12, color: THEME.charts.legendText}})
+      .setOption('pieSliceText', 'percentage')
+      .setOption('pieSliceTextStyle', {color: 'white', fontSize: 11})
+      .setPosition(4, 2, 0, 0) // Row 4, Col B
+      .build();
+
+    uiSheet.insertChart(pieChart);
+  }
+
+  // B. Historical Net Worth (Smooth Area Chart)
+  const lastSnapRow = snapSheet.getLastRow();
+  if (lastSnapRow > 1) {
+    const areaChart = uiSheet.newChart()
+      .asAreaChart()
+      .addRange(snapSheet.getRange(1, 1, lastSnapRow, 1)) // X: Dates
+      .addRange(snapSheet.getRange(1, 2, lastSnapRow, 1)) // Y1: Net USD
+      .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
+      .setOption('title', 'Net Worth Trajectory (USD)')
+      .setOption('colors', THEME.charts.area) 
+      .setOption('backgroundColor', { fill: 'transparent' })
+      .setOption('curveType', 'function') 
+      .setOption('chartArea', {left: '15%', top: '15%', width: '80%', height: '70%'})
+      .setOption('vAxis', { gridlines: {color: THEME.charts.gridlines}, textStyle: {color: THEME.charts.axisText}, format: 'short' })
+      .setOption('hAxis', { textStyle: {color: THEME.charts.axisText}, format: 'MMM yyyy' })
+      .setOption('legend', {position: 'none'}) 
+      .setPosition(4, 7, 0, 0) // Row 4, Col G (Next to Donut)
+      .build();
+
+    uiSheet.insertChart(areaChart);
+
+    // C. Liquid vs Locked (Stacked Column Chart)
+    const stackedBar = uiSheet.newChart()
+      .asColumnChart()
+      .addRange(snapSheet.getRange(1, 1, lastSnapRow, 1)) // X: Dates
+      .addRange(snapSheet.getRange(1, 3, lastSnapRow, 1)) // Y1: Liquid
+      .addRange(snapSheet.getRange(1, 4, lastSnapRow, 1)) // Y2: Locked
+      .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
+      .setOption('title', 'Liquidity Profile: Liquid vs. Locked Assets')
+      .setOption('isStacked', true)
+      .setOption('colors', THEME.charts.stacked) 
+      .setOption('backgroundColor', { fill: 'transparent' })
+      .setOption('chartArea', {left: '10%', top: '15%', width: '85%', height: '70%'})
+      .setOption('vAxis', { gridlines: {color: THEME.charts.gridlines}, textStyle: {color: THEME.charts.axisText}, format: 'short' })
+      .setOption('legend', {position: 'top', alignment: 'end', textStyle: {fontSize: 12, color: THEME.charts.legendText}})
+      .setPosition(22, 2, 0, 0) // Row 22, Col B (Below the others)
+      .build();
+
+    uiSheet.insertChart(stackedBar);
+  }
+}
+/**
+ * Execute a manual snapshot. Calculates deltas and generates insights.
  */
 function captureSnapshot() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -639,7 +754,6 @@ function captureSnapshot() {
   backupToGoogleDrive(true);
   updateVisualDashboards(); 
 }
-
 /** Manual trigger: runs both Gist and Drive backups with UI alerts. */
 function forceBackup() {
   backupToGitHub(false);
@@ -733,9 +847,7 @@ function backupToGitHub(silent = false) {
 
 /**
  * Google Drive Backup: serializes the live ledger to a dated JSON file.
- * Requires ZERO configuration — uses the script's own Google auth context.
  * Creates a "WealthScript — Backups" folder in Drive automatically.
- * Retains the latest MAX_DRIVE_BACKUPS files and prunes older ones.
  * @param {boolean} [silent=false] - Suppresses UI alerts on success.
  */
 function backupToGoogleDrive(silent = false) {
@@ -755,17 +867,12 @@ function backupToGoogleDrive(silent = false) {
       accounts
     }, null, 2);
 
-    // Resolve or create the backup folder
     const folderIterator = DriveApp.getFoldersByName(FOLDER_NAME);
     const folder = folderIterator.hasNext() ? folderIterator.next() : DriveApp.createFolder(FOLDER_NAME);
 
-    // Create the dated backup file
     const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH-mm");
     const fileName = `net_worth_${timestamp}.json`;
     folder.createFile(fileName, jsonContent, MimeType.PLAIN_TEXT);
-    // Note: old files are NOT pruned here to avoid requesting the Drive DELETE
-    // OAuth scope. Files are tiny (~2KB each) — manage them manually in Drive
-    // if needed. Folder: "WealthScript — Backups" in your Google Drive.
 
     if (!silent) {
       SpreadsheetApp.getUi().alert(
@@ -779,191 +886,35 @@ function backupToGoogleDrive(silent = false) {
 }
 
 /**
- * Fetches Zestimates using config from the Settings tab.
+ * Helper: Creates a Secret Gist via GitHub API
  */
-function updateRealEstatePrices() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName("Dashboard & Ledger");
-  const configSheet = ss.getSheetByName("Settings & Config");
-  
-  if(!configSheet) return SpreadsheetApp.getUi().alert("Settings tab missing. Run First Time Setup.");
+function autoCreateGist(pat) {
+  const payload = {
+    "description": "WealthScript Automated Backup",
+    "public": false,
+    "files": { "net_worth_backup.json": { "content": "{\n  \"status\": \"Initialized\"\n}" } }
+  };
+  const options = {
+    "method": "POST",
+    "headers": {
+      "Authorization": "Bearer " + pat,
+      "Accept": "application/vnd.github.v3+json",
+      "Content-Type": "application/json"
+    },
+    "payload": JSON.stringify(payload),
+    "muteHttpExceptions": true
+  };
 
-  const apiKey = configSheet.getRange("B2").getValue();
-  const apiHost = configSheet.getRange("B3").getValue();
-  
-  if (!apiKey || apiKey === "PASTE_KEY_HERE") return; 
-
-  // NOTE: ZPID table starts at row 19 after Epic 0 added FIRE/Currency config.
-  const propData = configSheet.getRange("A19:B35").getValues();
-  const properties = [];
-  for (let i = 0; i < propData.length; i++) {
-    if (propData[i][0] && propData[i][1]) {
-      properties.push({ name: String(propData[i][0]), zpid: String(propData[i][1]) });
+  try {
+    const response = UrlFetchApp.fetch("https://api.github.com/gists", options);
+    if (response.getResponseCode() === 201) {
+      return JSON.parse(response.getContentText()).id;
+    } else {
+      Logger.log("Failed to create Gist: " + response.getContentText());
+      return "";
     }
-  }
-
-  const accountNames = sheet.getRange("A1:A100").getValues().flat();
-  const currentValues = sheet.getRange("E1:E100").getValues();
-  let updated = false;
-
-  properties.forEach(prop => {
-    try {
-      const url = `https://${apiHost}/api/property-details/byzpid?zpid=${prop.zpid}`;
-      const options = {
-        method: 'GET',
-        headers: {
-          'X-RapidAPI-Key': apiKey,
-          'X-RapidAPI-Host': apiHost
-        },
-        muteHttpExceptions: true
-      };
-
-      const response = UrlFetchApp.fetch(url, options);
-      if (response.getResponseCode() === 200) {
-        const data = JSON.parse(response.getContentText());
-        const zestimate = data.property.zestimate; 
-        const targetRowIdx = accountNames.indexOf(prop.name); // 0-indexed for array
-        
-        if (targetRowIdx >= 0 && zestimate) {
-          currentValues[targetRowIdx][0] = zestimate;
-          updated = true;
-        }
-      }
-    } catch (e) {
-      Logger.log(`Script crashed on ${prop.name}: ${e}`);
-    }
-  });
-
-  if (updated) {
-    sheet.getRange("E1:E100").setValues(currentValues);
-  }
-}
-
-/**
- * Generates professional, full-screen visual dashboards on a dedicated tab.
- */
-function updateVisualDashboards() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const ledgerSheet = ss.getSheetByName("Dashboard & Ledger");
-  const snapSheet = ss.getSheetByName("Snapshots");
-
-  if (!ledgerSheet || !snapSheet) return;
-
-  // 1. Setup the Dedicated UI Tab
-  let dashboardName = "📊 Insights & Analytics";
-  let uiSheet = ss.getSheetByName(dashboardName);
-  
-  if (!uiSheet) {
-    uiSheet = ss.insertSheet(dashboardName, 1); // Insert right after the Ledger
-  } else {
-    // Clear existing charts to prevent stacking
-    const existingCharts = uiSheet.getCharts();
-    for (let i = 0; i < existingCharts.length; i++) {
-      uiSheet.removeChart(existingCharts[i]);
-    }
-    uiSheet.clear(); 
-  }
-
-  // Format the Dashboard Canvas
-  uiSheet.getRange("A1:Z100").setBackground("#f8fafc"); // Clean slate background
-  uiSheet.getRange("B2").setValue("PORTFOLIO ANALYTICS & TRENDS").setFontWeight("bold").setFontSize(16).setFontColor("#0f172a");
-  
-  // Hide gridlines for a clean UI feel
-  uiSheet.setHiddenGridlines(true);
-
-  // 2. Setup the Hidden Data Backend
-  let dataSheet = ss.getSheetByName("ChartData");
-  if (!dataSheet) {
-    dataSheet = ss.insertSheet("ChartData");
-    dataSheet.hideSheet(); 
-  } else {
-    dataSheet.clear();
-  }
-
-  // 3. Aggregate Live Asset Allocation
-  const dataRange = ledgerSheet.getRange("A7:J60").getValues();
-  const allocMap = {};
-  
-  for (let i = 0; i < dataRange.length; i++) {
-    let assetClass = String(dataRange[i][1]);
-    let netVal = Number(dataRange[i][8]); 
-    let status = String(dataRange[i][9]); 
-    
-    if (status === "Active" && !isNaN(netVal) && netVal > 0 && assetClass !== "") { 
-      if (!allocMap[assetClass]) allocMap[assetClass] = 0;
-      allocMap[assetClass] += netVal;
-    }
-  }
-
-  const pieData = [["Asset Class", "Net Value"]];
-  for (const [key, value] of Object.entries(allocMap)) {
-    pieData.push([key, value]);
-  }
-  dataSheet.getRange(1, 1, pieData.length, 2).setValues(pieData);
-
-  // --- CHART BUILDERS ---
-  
-  // Custom Modern Color Palette
-  const palette = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#f43f5e'];
-
-  // A. Asset Allocation (Modern Donut)
-  if (pieData.length > 1) {
-    const pieChart = uiSheet.newChart()
-      .asPieChart()
-      .addRange(dataSheet.getRange(1, 1, pieData.length, 2))
-      .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
-      .setOption('title', 'Live Asset Allocation')
-      .setOption('pieHole', 0.55) 
-      .setOption('colors', palette)
-      .setOption('backgroundColor', { fill: 'transparent' }) // Removes white box
-      .setOption('chartArea', {left: '5%', top: '15%', width: '90%', height: '80%'})
-      .setOption('legend', {position: 'labeled', textStyle: {fontSize: 12, color: '#334155'}})
-      .setOption('pieSliceText', 'percentage')
-      .setOption('pieSliceTextStyle', {color: 'white', fontSize: 11})
-      .setPosition(4, 2, 0, 0) // Row 4, Col B
-      .build();
-
-    uiSheet.insertChart(pieChart);
-  }
-
-  // B. Historical Net Worth (Smooth Area Chart)
-  const lastSnapRow = snapSheet.getLastRow();
-  if (lastSnapRow > 1) {
-    const areaChart = uiSheet.newChart()
-      .asAreaChart()
-      .addRange(snapSheet.getRange(1, 1, lastSnapRow, 1)) // X: Dates
-      .addRange(snapSheet.getRange(1, 2, lastSnapRow, 1)) // Y1: Net USD
-      .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
-      .setOption('title', 'Net Worth Trajectory (USD)')
-      .setOption('colors', ['#3b82f6'])
-      .setOption('backgroundColor', { fill: 'transparent' })
-      .setOption('curveType', 'function') // Smooth curves
-      .setOption('chartArea', {left: '15%', top: '15%', width: '80%', height: '70%'})
-      .setOption('vAxis', { gridlines: {color: '#e2e8f0'}, textStyle: {color: '#64748b'}, format: 'short' })
-      .setOption('hAxis', { textStyle: {color: '#64748b'}, format: 'MMM yyyy' })
-      .setOption('legend', {position: 'none'}) // Cleaner without legend for a single metric
-      .setPosition(4, 7, 0, 0) // Row 4, Col G (Next to Donut)
-      .build();
-
-    uiSheet.insertChart(areaChart);
-
-    // C. Liquid vs Locked (Stacked Column Chart)
-    const stackedBar = uiSheet.newChart()
-      .asColumnChart()
-      .addRange(snapSheet.getRange(1, 1, lastSnapRow, 1)) // X: Dates
-      .addRange(snapSheet.getRange(1, 3, lastSnapRow, 1)) // Y1: Liquid
-      .addRange(snapSheet.getRange(1, 4, lastSnapRow, 1)) // Y2: Locked
-      .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
-      .setOption('title', 'Liquidity Profile: Liquid vs. Locked Assets')
-      .setOption('isStacked', true)
-      .setOption('colors', ['#10b981', '#94a3b8']) // Green for Liquid, Slate for Locked
-      .setOption('backgroundColor', { fill: 'transparent' })
-      .setOption('chartArea', {left: '10%', top: '15%', width: '85%', height: '70%'})
-      .setOption('vAxis', { gridlines: {color: '#e2e8f0'}, textStyle: {color: '#64748b'}, format: 'short' })
-      .setOption('legend', {position: 'top', alignment: 'end', textStyle: {fontSize: 12, color: '#334155'}})
-      .setPosition(22, 2, 0, 0) // Row 22, Col B (Below the others)
-      .build();
-
-    uiSheet.insertChart(stackedBar);
+  } catch (e) {
+    Logger.log("Error creating Gist: " + e.message);
+    return "";
   }
 }
