@@ -28,8 +28,8 @@ function _buildGistUrl(gistId) {
 
 /**
  * Guided GitHub Gist Backup Wizard.
- * Opens the PAT creation page, prompts for token, validates, creates Gist,
- * and populates the Settings tab with credentials and a clickable hyperlink.
+ * Uses an inline clickable link (popup-blocker safe) instead of window.open().
+ * Validates token, creates Gist, populates Settings with credentials + hyperlink.
  */
 function setupGistWizard() {
   const ui = SpreadsheetApp.getUi();
@@ -41,28 +41,34 @@ function setupGistWizard() {
     return;
   }
 
-  // Step 1: Open GitHub PAT creation page in new tab
+  // Step 1: Show instructions with a clickable link (no popup blocker issues)
   const patUrl = "https://github.com/settings/tokens/new?scopes=gist&description=WealthScript+Backup";
   const htmlOutput = HtmlService
     .createHtmlOutput(
-      `<p>A new tab will open to GitHub where you can create a Personal Access Token.</p>
-       <p><b>Instructions:</b></p>
-       <ol>
-         <li>The <code>gist</code> scope is pre-selected — do NOT change it.</li>
-         <li>Click <b>"Generate token"</b> at the bottom of the page.</li>
-         <li>Copy the token (starts with <code>ghp_</code>).</li>
-         <li>Come back here and click OK, then paste it in the next dialog.</li>
-       </ol>
-       <script>window.open("${patUrl}");google.script.host.setHeight(220);</script>`
+      `<style>
+        body { font-family: 'Google Sans', Arial, sans-serif; padding: 16px; color: #1a1a1a; }
+        .step { margin-bottom: 12px; }
+        .step-num { display: inline-block; background: #2563EB; color: white; border-radius: 50%;
+                    width: 24px; height: 24px; text-align: center; line-height: 24px; font-size: 13px; margin-right: 8px; }
+        a.btn { display: inline-block; background: #2563EB; color: white !important; padding: 10px 20px;
+                border-radius: 6px; text-decoration: none; font-weight: bold; margin: 12px 0; }
+        a.btn:hover { background: #1d4ed8; }
+        code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+      </style>
+      <div class="step"><span class="step-num">1</span> Click the button below to open GitHub's token page:</div>
+      <a class="btn" href="${patUrl}" target="_blank">🔐 Open GitHub Token Page →</a>
+      <div class="step"><span class="step-num">2</span> The <code>gist</code> scope is pre-selected — just click <b>"Generate token"</b></div>
+      <div class="step"><span class="step-num">3</span> Copy the token (starts with <code>ghp_</code>)</div>
+      <div class="step"><span class="step-num">4</span> Close this dialog, then paste it in the next prompt</div>`
     )
-    .setWidth(420)
-    .setHeight(220);
-  ui.showModalDialog(htmlOutput, "🔐 Step 1: Create GitHub Token");
+    .setWidth(460)
+    .setHeight(280);
+  ui.showModalDialog(htmlOutput, "🔐 Step 1 of 2: Create GitHub Token");
 
   // Step 2: Prompt for token
   const response = ui.prompt(
-    "🔐 Step 2: Paste Your Token",
-    "Paste the GitHub Personal Access Token you just created:",
+    "🔐 Step 2 of 2: Paste Your Token",
+    "Paste the GitHub Personal Access Token you just created (starts with ghp_):",
     ui.ButtonSet.OK_CANCEL
   );
 
@@ -73,13 +79,12 @@ function setupGistWizard() {
 
   const pat = response.getResponseText().trim();
 
-  // Step 3: Validate token format
   if (!_validatePATFormat(pat)) {
-    ui.alert("❌ Invalid Token Format\n\nExpected a token starting with 'ghp_' or 'github_pat_'.\nPlease try the wizard again.");
+    ui.alert("❌ Invalid Token Format\n\nExpected a token starting with 'ghp_' or 'github_pat_'.\nPlease try the wizard again from the WealthScript menu.");
     return;
   }
 
-  // Step 4: Validate token against GitHub API
+  // Step 3: Validate token against GitHub API
   try {
     const testResponse = UrlFetchApp.fetch("https://api.github.com/user", {
       headers: { "Authorization": "Bearer " + pat, "Accept": "application/vnd.github.v3+json" },
@@ -94,7 +99,7 @@ function setupGistWizard() {
     return;
   }
 
-  // Step 5: Create Gist and populate Settings
+  // Step 4: Create Gist and populate Settings
   const gistId = autoCreateGist(pat);
   if (!gistId) {
     ui.alert("❌ Gist Creation Failed\n\nThe token is valid but Gist creation failed. Check Apps Script logs for details.");

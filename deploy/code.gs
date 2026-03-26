@@ -150,7 +150,16 @@ function runFirstTimeSetup() {
       .create();
   }
 
-  SpreadsheetApp.getUi().alert("Setup Complete!\n\n1. Review the 'Settings & Config' tab.\n2. Highlight rows 7+ on your Dashboard and click Format > Convert to Table.");
+  SpreadsheetApp.getUi().alert(
+    "✅ Setup Complete!\n\n" +
+    "Your dashboard and all tabs are ready.\n\n" +
+    "📋 Next Steps:\n" +
+    "1. Review the 'Settings & Config' tab\n" +
+    "2. Highlight rows 7+ on your Dashboard → Format > Convert to Table\n\n" +
+    "☁️ Secure Your Data (Optional):\n" +
+    "• WealthScript > 🔐 Setup GitHub Backup\n" +
+    "• WealthScript > 📁 Setup Google Drive Backup"
+  );
 }
 /**
  * ==========================================
@@ -182,8 +191,8 @@ function _buildGistUrl(gistId) {
 
 /**
  * Guided GitHub Gist Backup Wizard.
- * Opens the PAT creation page, prompts for token, validates, creates Gist,
- * and populates the Settings tab with credentials and a clickable hyperlink.
+ * Uses an inline clickable link (popup-blocker safe) instead of window.open().
+ * Validates token, creates Gist, populates Settings with credentials + hyperlink.
  */
 function setupGistWizard() {
   const ui = SpreadsheetApp.getUi();
@@ -195,28 +204,34 @@ function setupGistWizard() {
     return;
   }
 
-  // Step 1: Open GitHub PAT creation page in new tab
+  // Step 1: Show instructions with a clickable link (no popup blocker issues)
   const patUrl = "https://github.com/settings/tokens/new?scopes=gist&description=WealthScript+Backup";
   const htmlOutput = HtmlService
     .createHtmlOutput(
-      `<p>A new tab will open to GitHub where you can create a Personal Access Token.</p>
-       <p><b>Instructions:</b></p>
-       <ol>
-         <li>The <code>gist</code> scope is pre-selected — do NOT change it.</li>
-         <li>Click <b>"Generate token"</b> at the bottom of the page.</li>
-         <li>Copy the token (starts with <code>ghp_</code>).</li>
-         <li>Come back here and click OK, then paste it in the next dialog.</li>
-       </ol>
-       <script>window.open("${patUrl}");google.script.host.setHeight(220);</script>`
+      `<style>
+        body { font-family: 'Google Sans', Arial, sans-serif; padding: 16px; color: #1a1a1a; }
+        .step { margin-bottom: 12px; }
+        .step-num { display: inline-block; background: #2563EB; color: white; border-radius: 50%;
+                    width: 24px; height: 24px; text-align: center; line-height: 24px; font-size: 13px; margin-right: 8px; }
+        a.btn { display: inline-block; background: #2563EB; color: white !important; padding: 10px 20px;
+                border-radius: 6px; text-decoration: none; font-weight: bold; margin: 12px 0; }
+        a.btn:hover { background: #1d4ed8; }
+        code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+      </style>
+      <div class="step"><span class="step-num">1</span> Click the button below to open GitHub's token page:</div>
+      <a class="btn" href="${patUrl}" target="_blank">🔐 Open GitHub Token Page →</a>
+      <div class="step"><span class="step-num">2</span> The <code>gist</code> scope is pre-selected — just click <b>"Generate token"</b></div>
+      <div class="step"><span class="step-num">3</span> Copy the token (starts with <code>ghp_</code>)</div>
+      <div class="step"><span class="step-num">4</span> Close this dialog, then paste it in the next prompt</div>`
     )
-    .setWidth(420)
-    .setHeight(220);
-  ui.showModalDialog(htmlOutput, "🔐 Step 1: Create GitHub Token");
+    .setWidth(460)
+    .setHeight(280);
+  ui.showModalDialog(htmlOutput, "🔐 Step 1 of 2: Create GitHub Token");
 
   // Step 2: Prompt for token
   const response = ui.prompt(
-    "🔐 Step 2: Paste Your Token",
-    "Paste the GitHub Personal Access Token you just created:",
+    "🔐 Step 2 of 2: Paste Your Token",
+    "Paste the GitHub Personal Access Token you just created (starts with ghp_):",
     ui.ButtonSet.OK_CANCEL
   );
 
@@ -227,13 +242,12 @@ function setupGistWizard() {
 
   const pat = response.getResponseText().trim();
 
-  // Step 3: Validate token format
   if (!_validatePATFormat(pat)) {
-    ui.alert("❌ Invalid Token Format\n\nExpected a token starting with 'ghp_' or 'github_pat_'.\nPlease try the wizard again.");
+    ui.alert("❌ Invalid Token Format\n\nExpected a token starting with 'ghp_' or 'github_pat_'.\nPlease try the wizard again from the WealthScript menu.");
     return;
   }
 
-  // Step 4: Validate token against GitHub API
+  // Step 3: Validate token against GitHub API
   try {
     const testResponse = UrlFetchApp.fetch("https://api.github.com/user", {
       headers: { "Authorization": "Bearer " + pat, "Accept": "application/vnd.github.v3+json" },
@@ -248,7 +262,7 @@ function setupGistWizard() {
     return;
   }
 
-  // Step 5: Create Gist and populate Settings
+  // Step 4: Create Gist and populate Settings
   const gistId = autoCreateGist(pat);
   if (!gistId) {
     ui.alert("❌ Gist Creation Failed\n\nThe token is valid but Gist creation failed. Check Apps Script logs for details.");
@@ -845,12 +859,14 @@ function updateVisualDashboards() {
   }
 }
 /**
- * Execute a manual snapshot. Calculates deltas and generates insights.
+ * Execute a manual snapshot. Calculates deltas, generates insights,
+ * then chains cloud backups with transparent status reporting.
  */
 function captureSnapshot() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const mainSheet = ss.getSheetByName("Dashboard & Ledger");
   const logSheet = ss.getSheetByName("Snapshots");
+  const configSheet = ss.getSheetByName("Settings & Config");
 
   if (!mainSheet || !logSheet) return;
 
@@ -902,11 +918,89 @@ function captureSnapshot() {
   logSheet.getRange(2, 10).setNumberFormat("[Color10]+0.00%;[Color3]-0.00%"); 
   logSheet.getRange(2, 11).setNumberFormat("0.00%"); 
   
-  // Chain both cloud backups silently, then refresh charts
-  backupToGitHub(true);
-  backupToGoogleDrive(true);
+  // --- Cloud Backup Chain with Transparent Status ---
+  const gistConfigured = _isGistConfigured(configSheet);
+  const gistOk    = gistConfigured ? backupToGitHub(true) : false;
+  const driveOk   = backupToGoogleDrive(true);
+
+  // Build transparent status message
+  const statusParts = ["✅ Snapshot captured successfully!"];
+  
+  if (gistConfigured && gistOk) {
+    statusParts.push("☁️ GitHub Gist — Synced");
+  } else if (gistConfigured && !gistOk) {
+    statusParts.push("⚠️ GitHub Gist — Sync failed (check logs)");
+  } else {
+    statusParts.push("💤 GitHub Gist — Not configured");
+  }
+
+  if (driveOk) {
+    statusParts.push("📁 Google Drive — Synced");
+  } else {
+    statusParts.push("💤 Google Drive — Not synced");
+  }
+
+  if (!gistConfigured && !driveOk) {
+    statusParts.push("\n💡 Tip: Set up cloud backups from the WealthScript menu:\n• 🔐 Setup GitHub Backup\n• 📁 Setup Google Drive Backup");
+  }
+
+  SpreadsheetApp.getUi().alert(statusParts.join("\n"));
+
   updateVisualDashboards(); 
 }
+/**
+ * Builds an enriched backup payload including accounts, dashboard KPIs, and latest snapshot.
+ * @param {SpreadsheetApp.Spreadsheet} ss
+ * @returns {Object} Complete backup payload
+ */
+function _buildEnrichedBackup(ss) {
+  const mainSheet = ss.getSheetByName("Dashboard & Ledger");
+  const snapSheet = ss.getSheetByName("Snapshots");
+
+  // Account-level data
+  const dataRange = mainSheet.getRange("A7:K80").getValues();
+  const accounts = _buildLedgerSnapshot(dataRange);
+
+  // Dashboard KPI summary
+  const summary = {
+    netWorthUSD:   mainSheet.getRange("B2").getValue() || 0,
+    grossWorthUSD: mainSheet.getRange("B3").getValue() || 0,
+    netWorthSecondary1:  mainSheet.getRange("E2").getValue() || 0,
+    grossWorthSecondary1: mainSheet.getRange("E3").getValue() || 0,
+    netWorthSecondary2:  mainSheet.getRange("H2").getValue() || 0,
+    grossWorthSecondary2: mainSheet.getRange("H3").getValue() || 0,
+    liquidNetWorthUSD: mainSheet.getRange("B4").getValue() || 0,
+    lockedNetWorthUSD: mainSheet.getRange("E4").getValue() || 0,
+    fireProgress:      mainSheet.getRange("I4").getValue() || 0,
+  };
+
+  // Latest snapshot row (if exists)
+  let latestSnapshot = null;
+  if (snapSheet && snapSheet.getLastRow() > 1) {
+    const snapRow = snapSheet.getRange(2, 1, 1, 13).getValues()[0];
+    latestSnapshot = {
+      date:         snapRow[0],
+      netUSD:       snapRow[1],
+      liquidUSD:    snapRow[2],
+      lockedUSD:    snapRow[3],
+      grossUSD:     snapRow[4],
+      valueDelta:   snapRow[8],
+      pctGrowth:    snapRow[9],
+      fireProgress: snapRow[10],
+      autoInsight:  snapRow[11],
+      manualNotes:  snapRow[12]
+    };
+  }
+
+  return {
+    snapshotDate: new Date().toISOString(),
+    spreadsheetId: ss.getId(),
+    summary,
+    latestSnapshot,
+    accounts
+  };
+}
+
 /** Manual trigger: runs both Gist and Drive backups with UI alerts. */
 function forceBackup() {
   backupToGitHub(false);
@@ -942,29 +1036,35 @@ function _buildLedgerSnapshot(dataRange) {
 }
 
 /**
- * Disaster Recovery: Serializes live ledger into JSON and pushes to a private GitHub Gist.
- * @param {boolean} silent - If true, suppresses UI alerts on success (used for chained snapshotting)
+ * Checks if GitHub Gist backup is configured in Settings.
+ * @param {SpreadsheetApp.Sheet} configSheet
+ * @returns {boolean}
+ */
+function _isGistConfigured(configSheet) {
+  if (!configSheet) return false;
+  const pat = configSheet.getRange("B6").getValue();
+  const gistId = configSheet.getRange("B7").getValue();
+  return pat && pat !== "PASTE_GITHUB_TOKEN_HERE" && gistId && gistId !== "PASTE_GIST_ID_HERE";
+}
+
+/**
+ * Disaster Recovery: Serializes live ledger into enriched JSON and pushes to a private GitHub Gist.
+ * Silently skips if not configured (no errors thrown).
+ * @param {boolean} silent - If true, suppresses UI alerts on success.
+ * @returns {boolean} Whether the backup was attempted and succeeded.
  */
 function backupToGitHub(silent = false) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName("Dashboard & Ledger");
   const configSheet = ss.getSheetByName("Settings & Config");
 
-  if (!configSheet) {
-    if(!silent) SpreadsheetApp.getUi().alert("Settings tab missing. Please run First Time Setup.");
-    return;
+  if (!_isGistConfigured(configSheet)) {
+    // Silently skip — not configured
+    return false;
   }
 
   const githubToken = configSheet.getRange("B6").getValue();
   const gistId = configSheet.getRange("B7").getValue();
-
-  if (!githubToken || githubToken === "PASTE_GITHUB_TOKEN_HERE" || !gistId || gistId === "PASTE_GIST_ID_HERE") {
-    if(!silent) SpreadsheetApp.getUi().alert("Disaster Recovery not configured.\n\nPlease add your GitHub PAT and Gist ID in the Settings tab.");
-    return;
-  }
-
-  const dataRange = sheet.getRange("A7:K80").getValues();
-  const backupData = _buildLedgerSnapshot(dataRange);
+  const backupData = _buildEnrichedBackup(ss);
 
   const payload = {
     "description": "WealthScript Automated Backup",
@@ -989,36 +1089,33 @@ function backupToGitHub(silent = false) {
   try {
     const response = UrlFetchApp.fetch("https://api.github.com/gists/" + gistId, options);
     if (response.getResponseCode() === 200) {
-      if(!silent) SpreadsheetApp.getUi().alert("✅ Backup Successful!\n\nYour live JSON data has been securely versioned in your private GitHub Gist.");
+      if(!silent) SpreadsheetApp.getUi().alert("✅ GitHub Backup Successful!\n\nYour enriched ledger data has been securely versioned in your private GitHub Gist.");
+      return true;
     } else {
       if(!silent) SpreadsheetApp.getUi().alert("❌ GitHub API Error:\n" + response.getContentText());
+      return false;
     }
   } catch (e) {
+    Logger.log("GitHub backup error: " + e.message);
     if(!silent) SpreadsheetApp.getUi().alert("❌ Script crashed:\n" + e.message);
+    return false;
   }
 }
 
 /**
- * Google Drive Backup: serializes the live ledger to a dated JSON file.
+ * Google Drive Backup: serializes the enriched ledger to a dated JSON file.
  * Creates a "WealthScript — Backups" folder in Drive automatically.
+ * Silently skips if Drive access fails.
  * @param {boolean} [silent=false] - Suppresses UI alerts on success.
+ * @returns {boolean} Whether the backup succeeded.
  */
 function backupToGoogleDrive(silent = false) {
-  const MAX_DRIVE_BACKUPS = 24; // ~2 years of monthly snapshots
   const FOLDER_NAME = "WealthScript \u2014 Backups";
-
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName("Dashboard & Ledger");
-  if (!sheet) return;
 
   try {
-    const dataRange = sheet.getRange("A7:K80").getValues();
-    const accounts = _buildLedgerSnapshot(dataRange);
-    const jsonContent = JSON.stringify({
-      snapshotDate: new Date().toISOString(),
-      spreadsheetId: ss.getId(),
-      accounts
-    }, null, 2);
+    const backupData = _buildEnrichedBackup(ss);
+    const jsonContent = JSON.stringify(backupData, null, 2);
 
     const folderIterator = DriveApp.getFoldersByName(FOLDER_NAME);
     const folder = folderIterator.hasNext() ? folderIterator.next() : DriveApp.createFolder(FOLDER_NAME);
@@ -1032,9 +1129,11 @@ function backupToGoogleDrive(silent = false) {
         `\u2705 Google Drive Backup Successful!\n\nFolder: "${FOLDER_NAME}"\nFile: ${fileName}`
       );
     }
+    return true;
   } catch (e) {
     Logger.log("Google Drive backup error: " + e.message);
     if (!silent) SpreadsheetApp.getUi().alert("\u274c Drive Backup Failed:\n" + e.message);
+    return false;
   }
 }
 

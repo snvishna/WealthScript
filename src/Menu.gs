@@ -47,5 +47,14 @@ function runFirstTimeSetup() {
       .create();
   }
 
-  SpreadsheetApp.getUi().alert("Setup Complete!\n\n1. Review the 'Settings & Config' tab.\n2. Highlight rows 7+ on your Dashboard and click Format > Convert to Table.");
+  SpreadsheetApp.getUi().alert(
+    "✅ Setup Complete!\n\n" +
+    "Your dashboard and all tabs are ready.\n\n" +
+    "📋 Next Steps:\n" +
+    "1. Review the 'Settings & Config' tab\n" +
+    "2. Highlight rows 7+ on your Dashboard → Format > Convert to Table\n\n" +
+    "☁️ Secure Your Data (Optional):\n" +
+    "• WealthScript > 🔐 Setup GitHub Backup\n" +
+    "• WealthScript > 📁 Setup Google Drive Backup"
+  );
 }

@@ -1,3 +1,56 @@
+/**
+ * Builds an enriched backup payload including accounts, dashboard KPIs, and latest snapshot.
+ * @param {SpreadsheetApp.Spreadsheet} ss
+ * @returns {Object} Complete backup payload
+ */
+function _buildEnrichedBackup(ss) {
+  const mainSheet = ss.getSheetByName("Dashboard & Ledger");
+  const snapSheet = ss.getSheetByName("Snapshots");
+
+  // Account-level data
+  const dataRange = mainSheet.getRange("A7:K80").getValues();
+  const accounts = _buildLedgerSnapshot(dataRange);
+
+  // Dashboard KPI summary
+  const summary = {
+    netWorthUSD:   mainSheet.getRange("B2").getValue() || 0,
+    grossWorthUSD: mainSheet.getRange("B3").getValue() || 0,
+    netWorthSecondary1:  mainSheet.getRange("E2").getValue() || 0,
+    grossWorthSecondary1: mainSheet.getRange("E3").getValue() || 0,
+    netWorthSecondary2:  mainSheet.getRange("H2").getValue() || 0,
+    grossWorthSecondary2: mainSheet.getRange("H3").getValue() || 0,
+    liquidNetWorthUSD: mainSheet.getRange("B4").getValue() || 0,
+    lockedNetWorthUSD: mainSheet.getRange("E4").getValue() || 0,
+    fireProgress:      mainSheet.getRange("I4").getValue() || 0,
+  };
+
+  // Latest snapshot row (if exists)
+  let latestSnapshot = null;
+  if (snapSheet && snapSheet.getLastRow() > 1) {
+    const snapRow = snapSheet.getRange(2, 1, 1, 13).getValues()[0];
+    latestSnapshot = {
+      date:         snapRow[0],
+      netUSD:       snapRow[1],
+      liquidUSD:    snapRow[2],
+      lockedUSD:    snapRow[3],
+      grossUSD:     snapRow[4],
+      valueDelta:   snapRow[8],
+      pctGrowth:    snapRow[9],
+      fireProgress: snapRow[10],
+      autoInsight:  snapRow[11],
+      manualNotes:  snapRow[12]
+    };
+  }
+
+  return {
+    snapshotDate: new Date().toISOString(),
+    spreadsheetId: ss.getId(),
+    summary,
+    latestSnapshot,
+    accounts
+  };
+}
+
 /** Manual trigger: runs both Gist and Drive backups with UI alerts. */
 function forceBackup() {
   backupToGitHub(false);
@@ -33,29 +86,35 @@ function _buildLedgerSnapshot(dataRange) {
 }
 
 /**
- * Disaster Recovery: Serializes live ledger into JSON and pushes to a private GitHub Gist.
- * @param {boolean} silent - If true, suppresses UI alerts on success (used for chained snapshotting)
+ * Checks if GitHub Gist backup is configured in Settings.
+ * @param {SpreadsheetApp.Sheet} configSheet
+ * @returns {boolean}
+ */
+function _isGistConfigured(configSheet) {
+  if (!configSheet) return false;
+  const pat = configSheet.getRange("B6").getValue();
+  const gistId = configSheet.getRange("B7").getValue();
+  return pat && pat !== "PASTE_GITHUB_TOKEN_HERE" && gistId && gistId !== "PASTE_GIST_ID_HERE";
+}
+
+/**
+ * Disaster Recovery: Serializes live ledger into enriched JSON and pushes to a private GitHub Gist.
+ * Silently skips if not configured (no errors thrown).
+ * @param {boolean} silent - If true, suppresses UI alerts on success.
+ * @returns {boolean} Whether the backup was attempted and succeeded.
  */
 function backupToGitHub(silent = false) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName("Dashboard & Ledger");
   const configSheet = ss.getSheetByName("Settings & Config");
 
-  if (!configSheet) {
-    if(!silent) SpreadsheetApp.getUi().alert("Settings tab missing. Please run First Time Setup.");
-    return;
+  if (!_isGistConfigured(configSheet)) {
+    // Silently skip — not configured
+    return false;
   }
 
   const githubToken = configSheet.getRange("B6").getValue();
   const gistId = configSheet.getRange("B7").getValue();
-
-  if (!githubToken || githubToken === "PASTE_GITHUB_TOKEN_HERE" || !gistId || gistId === "PASTE_GIST_ID_HERE") {
-    if(!silent) SpreadsheetApp.getUi().alert("Disaster Recovery not configured.\n\nPlease add your GitHub PAT and Gist ID in the Settings tab.");
-    return;
-  }
-
-  const dataRange = sheet.getRange("A7:K80").getValues();
-  const backupData = _buildLedgerSnapshot(dataRange);
+  const backupData = _buildEnrichedBackup(ss);
 
   const payload = {
     "description": "WealthScript Automated Backup",
@@ -80,36 +139,33 @@ function backupToGitHub(silent = false) {
   try {
     const response = UrlFetchApp.fetch("https://api.github.com/gists/" + gistId, options);
     if (response.getResponseCode() === 200) {
-      if(!silent) SpreadsheetApp.getUi().alert("✅ Backup Successful!\n\nYour live JSON data has been securely versioned in your private GitHub Gist.");
+      if(!silent) SpreadsheetApp.getUi().alert("✅ GitHub Backup Successful!\n\nYour enriched ledger data has been securely versioned in your private GitHub Gist.");
+      return true;
     } else {
       if(!silent) SpreadsheetApp.getUi().alert("❌ GitHub API Error:\n" + response.getContentText());
+      return false;
     }
   } catch (e) {
+    Logger.log("GitHub backup error: " + e.message);
     if(!silent) SpreadsheetApp.getUi().alert("❌ Script crashed:\n" + e.message);
+    return false;
   }
 }
 
 /**
- * Google Drive Backup: serializes the live ledger to a dated JSON file.
+ * Google Drive Backup: serializes the enriched ledger to a dated JSON file.
  * Creates a "WealthScript — Backups" folder in Drive automatically.
+ * Silently skips if Drive access fails.
  * @param {boolean} [silent=false] - Suppresses UI alerts on success.
+ * @returns {boolean} Whether the backup succeeded.
  */
 function backupToGoogleDrive(silent = false) {
-  const MAX_DRIVE_BACKUPS = 24; // ~2 years of monthly snapshots
   const FOLDER_NAME = "WealthScript \u2014 Backups";
-
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName("Dashboard & Ledger");
-  if (!sheet) return;
 
   try {
-    const dataRange = sheet.getRange("A7:K80").getValues();
-    const accounts = _buildLedgerSnapshot(dataRange);
-    const jsonContent = JSON.stringify({
-      snapshotDate: new Date().toISOString(),
-      spreadsheetId: ss.getId(),
-      accounts
-    }, null, 2);
+    const backupData = _buildEnrichedBackup(ss);
+    const jsonContent = JSON.stringify(backupData, null, 2);
 
     const folderIterator = DriveApp.getFoldersByName(FOLDER_NAME);
     const folder = folderIterator.hasNext() ? folderIterator.next() : DriveApp.createFolder(FOLDER_NAME);
@@ -123,9 +179,11 @@ function backupToGoogleDrive(silent = false) {
         `\u2705 Google Drive Backup Successful!\n\nFolder: "${FOLDER_NAME}"\nFile: ${fileName}`
       );
     }
+    return true;
   } catch (e) {
     Logger.log("Google Drive backup error: " + e.message);
     if (!silent) SpreadsheetApp.getUi().alert("\u274c Drive Backup Failed:\n" + e.message);
+    return false;
   }
 }
 

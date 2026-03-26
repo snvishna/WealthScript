@@ -1,10 +1,12 @@
 /**
- * Execute a manual snapshot. Calculates deltas and generates insights.
+ * Execute a manual snapshot. Calculates deltas, generates insights,
+ * then chains cloud backups with transparent status reporting.
  */
 function captureSnapshot() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const mainSheet = ss.getSheetByName("Dashboard & Ledger");
   const logSheet = ss.getSheetByName("Snapshots");
+  const configSheet = ss.getSheetByName("Settings & Config");
 
   if (!mainSheet || !logSheet) return;
 
@@ -56,8 +58,33 @@ function captureSnapshot() {
   logSheet.getRange(2, 10).setNumberFormat("[Color10]+0.00%;[Color3]-0.00%"); 
   logSheet.getRange(2, 11).setNumberFormat("0.00%"); 
   
-  // Chain both cloud backups silently, then refresh charts
-  backupToGitHub(true);
-  backupToGoogleDrive(true);
+  // --- Cloud Backup Chain with Transparent Status ---
+  const gistConfigured = _isGistConfigured(configSheet);
+  const gistOk    = gistConfigured ? backupToGitHub(true) : false;
+  const driveOk   = backupToGoogleDrive(true);
+
+  // Build transparent status message
+  const statusParts = ["✅ Snapshot captured successfully!"];
+  
+  if (gistConfigured && gistOk) {
+    statusParts.push("☁️ GitHub Gist — Synced");
+  } else if (gistConfigured && !gistOk) {
+    statusParts.push("⚠️ GitHub Gist — Sync failed (check logs)");
+  } else {
+    statusParts.push("💤 GitHub Gist — Not configured");
+  }
+
+  if (driveOk) {
+    statusParts.push("📁 Google Drive — Synced");
+  } else {
+    statusParts.push("💤 Google Drive — Not synced");
+  }
+
+  if (!gistConfigured && !driveOk) {
+    statusParts.push("\n💡 Tip: Set up cloud backups from the WealthScript menu:\n• 🔐 Setup GitHub Backup\n• 📁 Setup Google Drive Backup");
+  }
+
+  SpreadsheetApp.getUi().alert(statusParts.join("\n"));
+
   updateVisualDashboards(); 
 }
