@@ -87,7 +87,16 @@ From the **WealthScript** menu, click **☁️ Force Cloud Backup** to trigger b
 
    > **Why this matters:** Without this step, Google auto-detects scopes from your code and requests the broadest possible permissions — including full Google Drive access. With the manifest applied, WealthScript requests only the 4 minimal permissions it actually needs (see [OAuth Scopes](#-oauth-scopes--privacy) below).
 
-5. Click **Save**. Close the Apps Script tab. **Refresh the sheet.**
+5. **⚠️ Required — Enable the Google Drive API (one-time):**\
+   WealthScript uses the Drive REST API directly (to limit access to only its own backup files). This requires the API to be explicitly enabled in your Apps Script project's Google Cloud project.
+   - In the Apps Script editor, click **⚙️ Project Settings** → scroll to **Google Cloud Platform (GCP) Project** → click the project number link to open Cloud Console.
+   - On the Cloud Console page, go to **APIs & Services → Library**.
+   - Search for **"Google Drive API"** and click **Enable**.
+   - Wait ~1 minute, then return to your Sheet.
+
+   > **When do I need this?** Only once, when first deploying WealthScript. If you skip this step, the Google Drive backup wizard will show a friendly error with a direct link to enable it.
+
+6. Click **Save**. Close the Apps Script tab. **Refresh the sheet.**
 
 ### Phase 2: First Time Setup
 1. A **WealthScript** menu will appear in your menu bar.

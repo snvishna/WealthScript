@@ -1208,6 +1208,40 @@ function backupToGoogleDrive(silent = false) {
 }
 
 /**
+ * Pure helper: Creates a folder via Drive REST API v3 (drive.file scope).
+ * @param {string} folderName
+ * @returns {string} The created folder ID
+ */
+function _createDriveFolder(folderName) {
+  const token = _getDriveToken();
+  const meta = { name: folderName, mimeType: "application/vnd.google-apps.folder" };
+  const resp = UrlFetchApp.fetch("https://www.googleapis.com/drive/v3/files", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    payload: JSON.stringify(meta),
+    muteHttpExceptions: true
+  });
+  if (resp.getResponseCode() !== 200) {
+    const body = resp.getContentText();
+    // Detect the common "Drive API not enabled" error and surface a helpful message
+    if (resp.getResponseCode() === 403 && body.includes("SERVICE_DISABLED")) {
+      const projectId = body.match(/"consumer": "projects\/(\d+)"/) 
+        ? body.match(/"consumer": "projects\/(\d+)"/)[1] 
+        : "your-project";
+      throw new Error(
+        "Google Drive API is not enabled for this Apps Script project.\n\n" +
+        "One-time fix (takes 30 seconds):\n" +
+        `1. Visit: https://console.developers.google.com/apis/api/drive.googleapis.com/overview?project=${projectId}\n` +
+        "2. Click \"Enable\"\n" +
+        "3. Wait ~1 minute, then try again."
+      );
+    }
+    throw new Error("Drive folder creation failed: " + body);
+  }
+  return JSON.parse(resp.getContentText()).id;
+}
+
+/**
  * Helper: Creates a Secret Gist via GitHub API
  */
 function autoCreateGist(pat) {
