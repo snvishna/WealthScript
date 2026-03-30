@@ -359,8 +359,11 @@ function setupDriveBackup() {
   }
 
   try {
-    const folderId = _createDriveFolder(FOLDER_NAME);
-    const folderUrl = _getDriveFileLink(folderId);
+    const folderIterator = DriveApp.getFoldersByName(FOLDER_NAME);
+    const folder = folderIterator.hasNext()
+      ? folderIterator.next()
+      : DriveApp.createFolder(FOLDER_NAME);
+    const folderUrl = folder.getUrl();
 
     const richDriveLink = SpreadsheetApp.newRichTextValue()
       .setText(folderUrl)
@@ -1222,86 +1225,14 @@ function backupToGitHub(ss_inject, silent = false) {
 }
 
 /**
- * Pure helper: returns the OAuth token for Drive REST API calls.
- * @returns {string}
- */
-function _getDriveToken() {
-  return ScriptApp.getOAuthToken();
-}
-
-/**
- * Pure helper: Creates a folder via Drive REST API v3 (drive.file scope).
- * @param {string} folderName
- * @returns {string} The created folder ID
- */
-function _createDriveFolder(folderName) {
-  const token = _getDriveToken();
-  const meta = { name: folderName, mimeType: "application/vnd.google-apps.folder" };
-  const resp = UrlFetchApp.fetch("https://www.googleapis.com/drive/v3/files", {
-    method: "POST",
-    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-    payload: JSON.stringify(meta),
-    muteHttpExceptions: true
-  });
-  if (resp.getResponseCode() !== 200) throw new Error("Drive folder creation failed: " + resp.getContentText());
-  return JSON.parse(resp.getContentText()).id;
-}
-
-/**
- * Pure helper: Creates a plain-text file inside a Drive folder via REST API.
- * @param {string} folderId - Parent folder ID
- * @param {string} fileName
- * @param {string} content - File text content
- * @returns {string} The created file ID
- */
-function _createDriveFile(folderId, fileName, content) {
-  const token = _getDriveToken();
-  const boundary = "wealthscript_boundary";
-  const body =
-    "--" + boundary + "\r\n" +
-    "Content-Type: application/json\r\n\r\n" +
-    JSON.stringify({ name: fileName, parents: [folderId] }) + "\r\n" +
-    "--" + boundary + "\r\n" +
-    "Content-Type: text/plain\r\n\r\n" +
-    content + "\r\n" +
-    "--" + boundary + "--";
-  const resp = UrlFetchApp.fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + token,
-      "Content-Type": "multipart/related; boundary=" + boundary
-    },
-    payload: body,
-    muteHttpExceptions: true
-  });
-  if (resp.getResponseCode() !== 200) throw new Error("Drive file creation failed: " + resp.getContentText());
-  return JSON.parse(resp.getContentText()).id;
-}
-
-/**
- * Pure helper: Gets the web view link for a Drive file/folder by ID.
- * @param {string} fileId
- * @returns {string} The webViewLink
- */
-function _getDriveFileLink(fileId) {
-  const token = _getDriveToken();
-  const resp = UrlFetchApp.fetch(
-    `https://www.googleapis.com/drive/v3/files/${fileId}?fields=webViewLink`,
-    { headers: { Authorization: "Bearer " + token }, muteHttpExceptions: true }
-  );
-  if (resp.getResponseCode() !== 200) return `https://drive.google.com/drive/folders/${fileId}`;
-  return JSON.parse(resp.getContentText()).webViewLink || `https://drive.google.com/drive/folders/${fileId}`;
-}
-
-/**
  * Google Drive Backup: serializes the enriched ledger to a dated JSON file.
- * Uses Drive REST API v3 with drive.file scope — only accesses app-created files.
- * @param {SpreadsheetApp.Spreadsheet} [ss_inject] - Target spreadsheet (for injection)
+ * Uses DriveApp — zero additional setup required beyond standard GAS authorization.
+ * Creates a "WealthScript — Backups" folder automatically on first run.
+ * @param {SpreadsheetApp.Spreadsheet} [ss_inject] - Target spreadsheet (for DI/testing)
  * @param {boolean} [silent=false] - Suppresses UI alerts on success.
- * @param {string} [folderId_inject] - Optional pre-created folder ID (for E2E tests)
- * @returns {{success: boolean, folderId: string}} Result object
+ * @returns {{success: boolean, folder: GoogleAppsScript.Drive.Folder}} Result object
  */
-function backupToGoogleDrive(ss_inject, silent = false, folderId_inject = null) {
+function backupToGoogleDrive(ss_inject, silent = false) {
   const FOLDER_NAME = "WealthScript \u2014 Backups";
   const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
 
@@ -1309,56 +1240,26 @@ function backupToGoogleDrive(ss_inject, silent = false, folderId_inject = null) 
     const backupData = _buildEnrichedBackup(ss);
     const jsonContent = JSON.stringify(backupData, null, 2);
 
-    const folderId = folderId_inject || _createDriveFolder(FOLDER_NAME);
+    const folderIterator = DriveApp.getFoldersByName(FOLDER_NAME);
+    const folder = folderIterator.hasNext()
+      ? folderIterator.next()
+      : DriveApp.createFolder(FOLDER_NAME);
+
     const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH-mm");
     const fileName = `net_worth_${timestamp}.json`;
-    _createDriveFile(folderId, fileName, jsonContent);
+    folder.createFile(fileName, jsonContent, MimeType.PLAIN_TEXT);
 
     if (!silent) {
       SpreadsheetApp.getUi().alert(
         `\u2705 Google Drive Backup Successful!\n\nFolder: "${FOLDER_NAME}"\nFile: ${fileName}`
       );
     }
-    return { success: true, folderId };
+    return { success: true, folder };
   } catch (e) {
     Logger.log("Google Drive backup error: " + e.message);
     if (!silent) SpreadsheetApp.getUi().alert("\u274c Drive Backup Failed:\n" + e.message);
-    return { success: false, folderId: null };
+    return { success: false, folder: null };
   }
-}
-
-/**
- * Pure helper: Creates a folder via Drive REST API v3 (drive.file scope).
- * @param {string} folderName
- * @returns {string} The created folder ID
- */
-function _createDriveFolder(folderName) {
-  const token = _getDriveToken();
-  const meta = { name: folderName, mimeType: "application/vnd.google-apps.folder" };
-  const resp = UrlFetchApp.fetch("https://www.googleapis.com/drive/v3/files", {
-    method: "POST",
-    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-    payload: JSON.stringify(meta),
-    muteHttpExceptions: true
-  });
-  if (resp.getResponseCode() !== 200) {
-    const body = resp.getContentText();
-    // Detect the common "Drive API not enabled" error and surface a helpful message
-    if (resp.getResponseCode() === 403 && body.includes("SERVICE_DISABLED")) {
-      const projectId = body.match(/"consumer": "projects\/(\d+)"/) 
-        ? body.match(/"consumer": "projects\/(\d+)"/)[1] 
-        : "your-project";
-      throw new Error(
-        "Google Drive API is not enabled for this Apps Script project.\n\n" +
-        "One-time fix (takes 30 seconds):\n" +
-        `1. Visit: https://console.developers.google.com/apis/api/drive.googleapis.com/overview?project=${projectId}\n` +
-        "2. Click \"Enable\"\n" +
-        "3. Wait ~1 minute, then try again."
-      );
-    }
-    throw new Error("Drive folder creation failed: " + body);
-  }
-  return JSON.parse(resp.getContentText()).id;
 }
 
 /**
