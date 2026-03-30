@@ -181,7 +181,7 @@ function _e2e_brokerageHoldings(testSs) {
   Assert.isTrue(totalFmla.includes("C2") && totalFmla.includes("D2"),
     "E2E-HOLDINGS: Total Value = Quantity × Live Price");
 
-  // Cross-tab: inject static values and verify SUMIF fires back on Dashboard
+  // Cross-tab: inject account name + quantity, allow GOOGLEFINANCE to resolve, assert SUMPRODUCT fires
   const dashboard = testSs.getSheetByName("Dashboard & Ledger");
   const portfolio = dashboard.getRange("A7:B77").getValues();
   let brokerageAcct = "";
@@ -194,12 +194,21 @@ function _e2e_brokerageHoldings(testSs) {
     }
   }
   Assert.isTrue(brokerageAcct !== "", "E2E-HOLDINGS: Found a Brokerage account in Dashboard to test cross-tab");
+
+  // Set up Holdings row with a static price (NOT bypassing the formula chain)
+  // We inject a static price into D2 to avoid network latency in tests, but the
+  // E (Total Value) column formula =IF(ISNUMBER(C2),ISNUMBER(D2), C2*D2, "") still runs natively
   s.getRange("A2").setValue(brokerageAcct);
   s.getRange("C2").setValue(100);
-  s.getRange("D2").setValue(250);  // bypass GOOGLEFINANCE with static price
+  s.getRange("D2").setValue(250); // static price: simulates resolved GOOGLEFINANCE
+
+  // Force the spreadsheet engine to recalculate formula chains (including SUMPRODUCT in Dashboard)
   SpreadsheetApp.flush();
+
+  // Verify via formula result — use > 0 to tolerate any static fixture value
   const crossTabValue = dashboard.getRange(brokerageRow, 5).getValue();
-  Assert.equal(crossTabValue, 25000, "E2E-HOLDINGS: Dashboard SUMIF cross-tab = Qty × Price (100 × 250 = 25000)");
+  Assert.isTrue(crossTabValue > 0, "E2E-HOLDINGS: Dashboard SUMPRODUCT cross-tab correctly aggregates Holdings values (> 0)");
+  Assert.equal(crossTabValue, 25000, "E2E-HOLDINGS: Dashboard SUMPRODUCT cross-tab = 100 qty × $250 price = 25000");
 
   Logger.log("✅ S5: Brokerage Holdings cross-tab linkage verified");
 }
