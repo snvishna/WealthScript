@@ -918,14 +918,13 @@ function updateVisualDashboards() {
       .addRange(ledgerSheet.getRange(7, 9, lastAssetRow - 6, 1)) // Net Worth (USD)
       .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_ROWS)
       .setOption('title', 'Asset Allocation Framework')
-      .setOption('pieHole', 0.45)
+      .setOption('pieHole', 0.55)
       .setOption('colors', THEME.charts.donut)
       .setOption('pieSliceBorderColor', "transparent")
       .setOption('backgroundColor', { fill: 'transparent' })
-      .setOption('chartArea', {left: '10%', top: '15%', width: '80%', height: '70%'})
-      .setOption('legend', {position: 'labeled', textStyle: {fontSize: 12, color: THEME.charts.legendText}})
-      .setOption('pieSliceText', 'percentage')
-      .setOption('pieSliceTextStyle', {color: 'white', fontSize: 11})
+      .setOption('chartArea', {left: '5%', top: '15%', width: '90%', height: '80%'})
+      .setOption('legend', {position: 'right', textStyle: {fontSize: 12, color: THEME.charts.legendText}})
+      .setOption('pieSliceText', 'none')
       .setPosition(4, 2, 0, 0) // Row 4, Col B
       .build();
 
@@ -943,11 +942,16 @@ function updateVisualDashboards() {
       .setOption('title', 'Net Worth Trajectory (USD)')
       .setOption('colors', THEME.charts.area) 
       .setOption('backgroundColor', { fill: 'transparent' })
-      .setOption('curveType', 'function') 
+      .setOption('curveType', 'function')
+      .setOption('pointSize', 6)
+      .setOption('lineWidth', 3)
       .setOption('chartArea', {left: '15%', top: '15%', width: '80%', height: '70%'})
-      .setOption('vAxis', { gridlines: {color: THEME.charts.gridlines}, textStyle: {color: THEME.charts.axisText}, format: 'short' })
+      .setOption('vAxis', { gridlines: {color: THEME.charts.gridlines}, textStyle: {color: THEME.charts.axisText}, format: '$#,###' })
       .setOption('hAxis', { textStyle: {color: THEME.charts.axisText}, format: 'MMM yyyy' })
-      .setOption('legend', {position: 'none'}) 
+      .setOption('legend', {position: 'top', alignment: 'end', textStyle: {fontSize: 12, color: THEME.charts.legendText}})
+      .setOption('series', {
+        0: {label: 'Total Net Worth'}
+      })
       .setPosition(4, 7, 0, 0) // Row 4, Col G (Next to Donut)
       .build();
 
@@ -965,8 +969,12 @@ function updateVisualDashboards() {
       .setOption('colors', THEME.charts.stacked) 
       .setOption('backgroundColor', { fill: 'transparent' })
       .setOption('chartArea', {left: '10%', top: '15%', width: '85%', height: '70%'})
-      .setOption('vAxis', { gridlines: {color: THEME.charts.gridlines}, textStyle: {color: THEME.charts.axisText}, format: 'short' })
+      .setOption('vAxis', { gridlines: {color: THEME.charts.gridlines}, textStyle: {color: THEME.charts.axisText}, format: '$#,###' })
       .setOption('legend', {position: 'top', alignment: 'end', textStyle: {fontSize: 12, color: THEME.charts.legendText}})
+      .setOption('series', {
+        0: {label: 'Liquid Assets'},
+        1: {label: 'Locked Assets'}
+      })
       .setPosition(22, 2, 0, 0) // Row 22, Col B (Below the others)
       .build();
 
