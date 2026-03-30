@@ -1,5 +1,5 @@
-function buildSettingsTab() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function buildSettingsTab(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("Settings & Config");
   if (!sheet) sheet = ss.insertSheet("Settings & Config");
   else sheet.clear();
@@ -89,8 +89,17 @@ function buildSettingsTab() {
 /**
  * 2. Builds the Dashboard & Ledger with full professional formatting.
  */
-function buildPortfolioTracker() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+/**
+ * Pure helper: Generates the SUMIF formula linking a dashboard row to the Brokerage Holdings tab.
+ * @param {number} rowNum - The 1-indexed row number on the Dashboard sheet
+ * @returns {string} The formula string
+ */
+function _buildBrokerageFormula(rowNum) {
+  return `=IFERROR(SUMIF('Brokerage Holdings'!A:A,A${rowNum},'Brokerage Holdings'!E:E),0)`;
+}
+
+function buildPortfolioTracker(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("Dashboard & Ledger");
   if (!sheet) sheet = ss.insertSheet("Dashboard & Ledger");
   else sheet.clear();
@@ -180,7 +189,6 @@ function buildPortfolioTracker() {
     .setNumberFormat("0.0%").setFontColor(THEME.quickStats.fireFg).setFontSize(11).setFontWeight("bold");
 
   sheet.setRowHeight(4, 28);
-
   sheet.getRange("A5:K5").setBackground(THEME.accentBar);
   sheet.setRowHeight(5, 3);
 
@@ -193,8 +201,14 @@ function buildPortfolioTracker() {
   sheet.setRowHeight(6, 36);
 
   sheet.getRange(7, 1, DEFAULT_PORTFOLIO_DATA.length, headers.length).setValues(DEFAULT_PORTFOLIO_DATA);
-
   const NUM_ROWS = 70;
+  for (let i = 0; i < DEFAULT_PORTFOLIO_DATA.length; i++) {
+    if (DEFAULT_PORTFOLIO_DATA[i][1] === "Brokerage") {
+      const r = i + 7;
+      sheet.getRange(r, 5).setFormula(_buildBrokerageFormula(r));
+    }
+  }
+
   const exch = [], gross = [], net = [];
   for (let i = 0; i < NUM_ROWS; i++) {
     const r = i + 7;
@@ -226,7 +240,27 @@ function buildPortfolioTracker() {
       .setBackground(THEME.negativeValueBg).setFontColor(THEME.negativeValueFg)
       .setRanges([sheet.getRange(7, 9, NUM_ROWS, 1)]).build()
   );
+
+  // --- Current Value UX: Distinguish Manual vs Calculated ---
+  const currentValueRange = sheet.getRange(7, 5, NUM_ROWS, 1);
+  cfRules.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=AND(NOT(ISBLANK(E7)), NOT(ISFORMULA(E7)))')
+      .setFontColor(THEME.accentBlue)
+      .setBold(true)
+      .setRanges([currentValueRange]).build()
+  );
+  cfRules.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=ISFORMULA(E7)')
+      .setFontColor(THEME.mutedText)
+      .setItalic(true)
+      .setRanges([currentValueRange]).build()
+  );
   sheet.setConditionalFormatRules(cfRules);
+
+  // Add an instructional note to the 'Current Value' header (Row 6, Col 5)
+  sheet.getRange(6, 5).setNote("💡 Legend:\n\n• Blue & Bold: Requires manual value input.\n• Muted & Italic: Auto-calculated via formulas (Do not edit).");
 
   sheet.setColumnWidth(1, 220);  
   sheet.setColumnWidth(2, 135);  
@@ -245,8 +279,8 @@ function buildPortfolioTracker() {
 /**
  * 3. Builds the Brokerage Holdings Tab 
  */
-function buildHoldingsTab() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function buildHoldingsTab(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("Brokerage Holdings");
   if (!sheet) sheet = ss.insertSheet("Brokerage Holdings");
   else sheet.clear(); 
@@ -308,8 +342,8 @@ function buildSnapshotTab() {
 /**
  * 5. Builds the Cash Flow & Burn Tab
  */
-function buildCashFlowTab() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function buildCashFlowTab(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("💸 Cash Flow & Burn");
   if (!sheet) sheet = ss.insertSheet("💸 Cash Flow & Burn");
   else sheet.clear();

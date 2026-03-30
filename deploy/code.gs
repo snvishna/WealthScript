@@ -122,13 +122,17 @@ function onOpen() {
 
 /**
  * MASTER SETUP: Builds all tabs and sets up automated cron jobs.
+ * @param {SpreadsheetApp.Spreadsheet} [ss_inject] - Optional target spreadsheet
+ * @param {boolean} [silent=false] - Whether to suppress UI alerts
  */
-function runFirstTimeSetup() {
-  buildSettingsTab();
-  buildPortfolioTracker();
-  buildHoldingsTab();
-  buildSnapshotTab();
-  buildCashFlowTab();
+function runFirstTimeSetup(ss_inject, silent = false) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  
+  buildSettingsTab(ss);
+  buildPortfolioTracker(ss);
+  buildHoldingsTab(ss);
+  buildSnapshotTab(ss);
+  buildCashFlowTab(ss);
 
   // Setup the Weekly Real Estate Trigger
   const triggers = ScriptApp.getProjectTriggers();
@@ -150,16 +154,18 @@ function runFirstTimeSetup() {
       .create();
   }
 
-  SpreadsheetApp.getUi().alert(
-    "✅ Setup Complete!\n\n" +
-    "Your dashboard and all tabs are ready.\n\n" +
-    "📋 Next Steps:\n" +
-    "1. Review the 'Settings & Config' tab\n" +
-    "2. Highlight rows 7+ on your Dashboard → Format > Convert to Table\n\n" +
-    "☁️ Secure Your Data (Optional):\n" +
-    "• WealthScript > 🔐 Setup GitHub Backup\n" +
-    "• WealthScript > 📁 Setup Google Drive Backup"
-  );
+  if (!silent) {
+    SpreadsheetApp.getUi().alert(
+      "✅ Setup Complete!\n\n" +
+      "Your dashboard and all tabs are ready.\n\n" +
+      "📋 Next Steps:\n" +
+      "1. Review the 'Settings & Config' tab\n" +
+      "2. Highlight rows 7+ on your Dashboard → Format > Convert to Table\n\n" +
+      "☁️ Secure Your Data (Optional):\n" +
+      "• WealthScript > 🔐 Setup GitHub Backup\n" +
+      "• WealthScript > 📁 Setup Google Drive Backup"
+    );
+  }
 }
 /**
  * ==========================================
@@ -353,9 +359,8 @@ function setupDriveBackup() {
   }
 
   try {
-    const folderIterator = DriveApp.getFoldersByName(FOLDER_NAME);
-    const folder = folderIterator.hasNext() ? folderIterator.next() : DriveApp.createFolder(FOLDER_NAME);
-    const folderUrl = folder.getUrl();
+    const folderId = _createDriveFolder(FOLDER_NAME);
+    const folderUrl = _getDriveFileLink(folderId);
 
     const richDriveLink = SpreadsheetApp.newRichTextValue()
       .setText(folderUrl)
@@ -370,16 +375,17 @@ function setupDriveBackup() {
 }
 /**
  * Fetches Zestimates using config from the Settings tab.
+ * @param {SpreadsheetApp.Spreadsheet} [ss_inject] - Target spreadsheet (for DI)
  */
-function updateRealEstatePrices() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function updateRealEstatePrices(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName("Dashboard & Ledger");
   const configSheet = ss.getSheetByName("Settings & Config");
   
-  if(!configSheet) return SpreadsheetApp.getUi().alert("Settings tab missing. Run First Time Setup.");
+  if(!configSheet) return;
 
-  const apiKey = configSheet.getRange("B2").getValue();
-  const apiHost = configSheet.getRange("B3").getValue();
+  const apiKey = configSheet.getRange("B9").getValue();
+  const apiHost = configSheet.getRange("B10").getValue();
   
   if (!apiKey || apiKey === "PASTE_KEY_HERE") return; 
 
@@ -427,8 +433,8 @@ function updateRealEstatePrices() {
     sheet.getRange("E1:E100").setValues(currentValues);
   }
 }
-function buildSettingsTab() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function buildSettingsTab(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("Settings & Config");
   if (!sheet) sheet = ss.insertSheet("Settings & Config");
   else sheet.clear();
@@ -518,8 +524,17 @@ function buildSettingsTab() {
 /**
  * 2. Builds the Dashboard & Ledger with full professional formatting.
  */
-function buildPortfolioTracker() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+/**
+ * Pure helper: Generates the SUMIF formula linking a dashboard row to the Brokerage Holdings tab.
+ * @param {number} rowNum - The 1-indexed row number on the Dashboard sheet
+ * @returns {string} The formula string
+ */
+function _buildBrokerageFormula(rowNum) {
+  return `=IFERROR(SUMIF('Brokerage Holdings'!A:A,A${rowNum},'Brokerage Holdings'!E:E),0)`;
+}
+
+function buildPortfolioTracker(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("Dashboard & Ledger");
   if (!sheet) sheet = ss.insertSheet("Dashboard & Ledger");
   else sheet.clear();
@@ -609,7 +624,6 @@ function buildPortfolioTracker() {
     .setNumberFormat("0.0%").setFontColor(THEME.quickStats.fireFg).setFontSize(11).setFontWeight("bold");
 
   sheet.setRowHeight(4, 28);
-
   sheet.getRange("A5:K5").setBackground(THEME.accentBar);
   sheet.setRowHeight(5, 3);
 
@@ -622,8 +636,14 @@ function buildPortfolioTracker() {
   sheet.setRowHeight(6, 36);
 
   sheet.getRange(7, 1, DEFAULT_PORTFOLIO_DATA.length, headers.length).setValues(DEFAULT_PORTFOLIO_DATA);
-
   const NUM_ROWS = 70;
+  for (let i = 0; i < DEFAULT_PORTFOLIO_DATA.length; i++) {
+    if (DEFAULT_PORTFOLIO_DATA[i][1] === "Brokerage") {
+      const r = i + 7;
+      sheet.getRange(r, 5).setFormula(_buildBrokerageFormula(r));
+    }
+  }
+
   const exch = [], gross = [], net = [];
   for (let i = 0; i < NUM_ROWS; i++) {
     const r = i + 7;
@@ -655,7 +675,27 @@ function buildPortfolioTracker() {
       .setBackground(THEME.negativeValueBg).setFontColor(THEME.negativeValueFg)
       .setRanges([sheet.getRange(7, 9, NUM_ROWS, 1)]).build()
   );
+
+  // --- Current Value UX: Distinguish Manual vs Calculated ---
+  const currentValueRange = sheet.getRange(7, 5, NUM_ROWS, 1);
+  cfRules.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=AND(NOT(ISBLANK(E7)), NOT(ISFORMULA(E7)))')
+      .setFontColor(THEME.accentBlue)
+      .setBold(true)
+      .setRanges([currentValueRange]).build()
+  );
+  cfRules.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=ISFORMULA(E7)')
+      .setFontColor(THEME.mutedText)
+      .setItalic(true)
+      .setRanges([currentValueRange]).build()
+  );
   sheet.setConditionalFormatRules(cfRules);
+
+  // Add an instructional note to the 'Current Value' header (Row 6, Col 5)
+  sheet.getRange(6, 5).setNote("💡 Legend:\n\n• Blue & Bold: Requires manual value input.\n• Muted & Italic: Auto-calculated via formulas (Do not edit).");
 
   sheet.setColumnWidth(1, 220);  
   sheet.setColumnWidth(2, 135);  
@@ -674,8 +714,8 @@ function buildPortfolioTracker() {
 /**
  * 3. Builds the Brokerage Holdings Tab 
  */
-function buildHoldingsTab() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function buildHoldingsTab(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("Brokerage Holdings");
   if (!sheet) sheet = ss.insertSheet("Brokerage Holdings");
   else sheet.clear(); 
@@ -737,8 +777,8 @@ function buildSnapshotTab() {
 /**
  * 5. Builds the Cash Flow & Burn Tab
  */
-function buildCashFlowTab() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function buildCashFlowTab(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("💸 Cash Flow & Burn");
   if (!sheet) sheet = ss.insertSheet("💸 Cash Flow & Burn");
   else sheet.clear();
@@ -931,9 +971,11 @@ function updateVisualDashboards() {
 /**
  * Execute a manual snapshot. Calculates deltas, generates insights,
  * then chains cloud backups with transparent status reporting.
+ * @param {SpreadsheetApp.Spreadsheet} [ss_inject] - Target spreadsheet
+ * @param {boolean} [silent=false] - Suppress UI reports
  */
-function captureSnapshot() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function captureSnapshot(ss_inject, silent = false) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   const mainSheet = ss.getSheetByName("Dashboard & Ledger");
   const logSheet = ss.getSheetByName("Snapshots");
   const configSheet = ss.getSheetByName("Settings & Config");
@@ -990,8 +1032,9 @@ function captureSnapshot() {
   
   // --- Cloud Backup Chain with Transparent Status ---
   const gistConfigured = _isGistConfigured(configSheet);
-  const gistOk    = gistConfigured ? backupToGitHub(true) : false;
-  const driveOk   = backupToGoogleDrive(true);
+  const gistOk    = gistConfigured ? backupToGitHub(ss, true) : false;
+  const driveResult = backupToGoogleDrive(ss, true);
+  const driveOk   = driveResult && driveResult.success;
 
   // Build transparent status message
   const statusParts = ["✅ Snapshot captured successfully!"];
@@ -1014,7 +1057,9 @@ function captureSnapshot() {
     statusParts.push("\n💡 Tip: Set up cloud backups from the WealthScript menu:\n• 🔐 Setup GitHub Backup\n• 📁 Setup Google Drive Backup");
   }
 
-  SpreadsheetApp.getUi().alert(statusParts.join("\n"));
+  if (!silent) {
+    SpreadsheetApp.getUi().alert(statusParts.join("\n"));
+  }
 
   updateVisualDashboards(); 
 }
@@ -1072,9 +1117,10 @@ function _buildEnrichedBackup(ss) {
 }
 
 /** Manual trigger: runs both Gist and Drive backups with UI alerts. */
-function forceBackup() {
-  backupToGitHub(false);
-  backupToGoogleDrive(false);
+function forceBackup(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  backupToGitHub(ss, false);
+  backupToGoogleDrive(ss, false);
 }
 
 /**
@@ -1120,11 +1166,12 @@ function _isGistConfigured(configSheet) {
 /**
  * Disaster Recovery: Serializes live ledger into enriched JSON and pushes to a private GitHub Gist.
  * Silently skips if not configured (no errors thrown).
- * @param {boolean} silent - If true, suppresses UI alerts on success.
+ * @param {SpreadsheetApp.Spreadsheet} [ss_inject] - Target spreadsheet (for injection)
+ * @param {boolean} [silent=false] - If true, suppresses UI alerts on success.
  * @returns {boolean} Whether the backup was attempted and succeeded.
  */
-function backupToGitHub(silent = false) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function backupToGitHub(ss_inject, silent = false) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   const configSheet = ss.getSheetByName("Settings & Config");
 
   if (!_isGistConfigured(configSheet)) {
@@ -1173,37 +1220,108 @@ function backupToGitHub(silent = false) {
 }
 
 /**
- * Google Drive Backup: serializes the enriched ledger to a dated JSON file.
- * Creates a "WealthScript — Backups" folder in Drive automatically.
- * Silently skips if Drive access fails.
- * @param {boolean} [silent=false] - Suppresses UI alerts on success.
- * @returns {boolean} Whether the backup succeeded.
+ * Pure helper: returns the OAuth token for Drive REST API calls.
+ * @returns {string}
  */
-function backupToGoogleDrive(silent = false) {
+function _getDriveToken() {
+  return ScriptApp.getOAuthToken();
+}
+
+/**
+ * Pure helper: Creates a folder via Drive REST API v3 (drive.file scope).
+ * @param {string} folderName
+ * @returns {string} The created folder ID
+ */
+function _createDriveFolder(folderName) {
+  const token = _getDriveToken();
+  const meta = { name: folderName, mimeType: "application/vnd.google-apps.folder" };
+  const resp = UrlFetchApp.fetch("https://www.googleapis.com/drive/v3/files", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    payload: JSON.stringify(meta),
+    muteHttpExceptions: true
+  });
+  if (resp.getResponseCode() !== 200) throw new Error("Drive folder creation failed: " + resp.getContentText());
+  return JSON.parse(resp.getContentText()).id;
+}
+
+/**
+ * Pure helper: Creates a plain-text file inside a Drive folder via REST API.
+ * @param {string} folderId - Parent folder ID
+ * @param {string} fileName
+ * @param {string} content - File text content
+ * @returns {string} The created file ID
+ */
+function _createDriveFile(folderId, fileName, content) {
+  const token = _getDriveToken();
+  const boundary = "wealthscript_boundary";
+  const body =
+    "--" + boundary + "\r\n" +
+    "Content-Type: application/json\r\n\r\n" +
+    JSON.stringify({ name: fileName, parents: [folderId] }) + "\r\n" +
+    "--" + boundary + "\r\n" +
+    "Content-Type: text/plain\r\n\r\n" +
+    content + "\r\n" +
+    "--" + boundary + "--";
+  const resp = UrlFetchApp.fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + token,
+      "Content-Type": "multipart/related; boundary=" + boundary
+    },
+    payload: body,
+    muteHttpExceptions: true
+  });
+  if (resp.getResponseCode() !== 200) throw new Error("Drive file creation failed: " + resp.getContentText());
+  return JSON.parse(resp.getContentText()).id;
+}
+
+/**
+ * Pure helper: Gets the web view link for a Drive file/folder by ID.
+ * @param {string} fileId
+ * @returns {string} The webViewLink
+ */
+function _getDriveFileLink(fileId) {
+  const token = _getDriveToken();
+  const resp = UrlFetchApp.fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?fields=webViewLink`,
+    { headers: { Authorization: "Bearer " + token }, muteHttpExceptions: true }
+  );
+  if (resp.getResponseCode() !== 200) return `https://drive.google.com/drive/folders/${fileId}`;
+  return JSON.parse(resp.getContentText()).webViewLink || `https://drive.google.com/drive/folders/${fileId}`;
+}
+
+/**
+ * Google Drive Backup: serializes the enriched ledger to a dated JSON file.
+ * Uses Drive REST API v3 with drive.file scope — only accesses app-created files.
+ * @param {SpreadsheetApp.Spreadsheet} [ss_inject] - Target spreadsheet (for injection)
+ * @param {boolean} [silent=false] - Suppresses UI alerts on success.
+ * @param {string} [folderId_inject] - Optional pre-created folder ID (for E2E tests)
+ * @returns {{success: boolean, folderId: string}} Result object
+ */
+function backupToGoogleDrive(ss_inject, silent = false, folderId_inject = null) {
   const FOLDER_NAME = "WealthScript \u2014 Backups";
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
 
   try {
     const backupData = _buildEnrichedBackup(ss);
     const jsonContent = JSON.stringify(backupData, null, 2);
 
-    const folderIterator = DriveApp.getFoldersByName(FOLDER_NAME);
-    const folder = folderIterator.hasNext() ? folderIterator.next() : DriveApp.createFolder(FOLDER_NAME);
-
+    const folderId = folderId_inject || _createDriveFolder(FOLDER_NAME);
     const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH-mm");
     const fileName = `net_worth_${timestamp}.json`;
-    folder.createFile(fileName, jsonContent, MimeType.PLAIN_TEXT);
+    _createDriveFile(folderId, fileName, jsonContent);
 
     if (!silent) {
       SpreadsheetApp.getUi().alert(
         `\u2705 Google Drive Backup Successful!\n\nFolder: "${FOLDER_NAME}"\nFile: ${fileName}`
       );
     }
-    return true;
+    return { success: true, folderId };
   } catch (e) {
     Logger.log("Google Drive backup error: " + e.message);
     if (!silent) SpreadsheetApp.getUi().alert("\u274c Drive Backup Failed:\n" + e.message);
-    return false;
+    return { success: false, folderId: null };
   }
 }
 
