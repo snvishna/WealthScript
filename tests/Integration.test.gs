@@ -149,9 +149,9 @@ function _e2e_dashboardLedger(testSs) {
   Assert.isTrue(brokerageRows.length > 0, "E2E-DASHBOARD: At least one Brokerage row exists in ledger");
   for (const r of brokerageRows) {
     const f = s.getRange(r, 5).getFormula();
-    Assert.isTrue(f.includes("Brokerage Holdings"), `E2E-DASHBOARD: Row ${r} Brokerage SUMIF links to Holdings tab`);
-    Assert.isTrue(f.includes("SUMIF"), `E2E-DASHBOARD: Row ${r} uses SUMIF for live aggregation`);
-    Assert.isTrue(f.includes("IFERROR"), `E2E-DASHBOARD: Row ${r} SUMIF is wrapped in IFERROR`);
+    Assert.isTrue(f.includes("SUMPRODUCT"), `E2E-DASHBOARD: Row ${r} uses SUMPRODUCT for live aggregation`);
+    Assert.isTrue(f.includes("N("), `E2E-DASHBOARD: Row ${r} uses N() to prevent #VALUE! from empty Holdings cells`);
+    Assert.isTrue(!f.includes("IFERROR"), `E2E-DASHBOARD: Row ${r} has no IFERROR wrapper that could silently return 0`);
   }
 
   Logger.log("✅ S4: Dashboard & Ledger architecture verified");

@@ -526,13 +526,13 @@ function buildSettingsTab(ss_inject) {
  */
 /**
  * Pure helper: Generates the SUMPRODUCT formula linking a dashboard row to the Brokerage Holdings tab.
- * Uses SUMPRODUCT instead of SUMIF to correctly handle cross-sheet GOOGLEFINANCE-driven values
- * (SUMIF can return 0 until a manual refresh when the sum range contains volatile formulas).
+ * Uses N() to coerce empty strings in the Total Value column to 0, preventing #VALUE! errors
+ * that IFERROR would silently swallow (returning 0 instead of the actual sum).
  * @param {number} rowNum - The 1-indexed row number on the Dashboard sheet
  * @returns {string} The formula string
  */
 function _buildBrokerageFormula(rowNum) {
-  return `=IFERROR(SUMPRODUCT(('Brokerage Holdings'!$A$2:$A$200=A${rowNum})*('Brokerage Holdings'!$E$2:$E$200)),0)`;
+  return `=SUMPRODUCT(('Brokerage Holdings'!$A$2:$A$200=A${rowNum})*N('Brokerage Holdings'!$E$2:$E$200))`;
 }
 
 function buildPortfolioTracker(ss_inject) {
@@ -642,7 +642,12 @@ function buildPortfolioTracker(ss_inject) {
   for (let i = 0; i < DEFAULT_PORTFOLIO_DATA.length; i++) {
     if (DEFAULT_PORTFOLIO_DATA[i][1] === "Brokerage") {
       const r = i + 7;
-      sheet.getRange(r, 5).setFormula(_buildBrokerageFormula(r));
+      const cell = sheet.getRange(r, 5);
+      cell.setFormula(_buildBrokerageFormula(r));
+      // Warning-only protection: native Google Sheets dialog fires when user tries to edit
+      cell.protect()
+        .setWarningOnly(true)
+        .setDescription("Auto-calculated from Brokerage Holdings tab. Editing will override live market data.");
     }
   }
 
