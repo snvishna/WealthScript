@@ -203,11 +203,9 @@ WealthScript uses a minimal, explicitly declared permission manifest (`deploy/ap
 | Permission shown on consent screen | Scope declared | Why it's needed |
 |---|---|---|
 | *"See, edit, create and delete your Sheets"* | `spreadsheets` | Builds tabs, writes balances, updates formulas |
+| *"See, edit, create and delete files in Google Drive"* | `drive` | Creates the backup folder and dated JSON files |
 | *"Connect to an external service"* | `script.external_request` | GOOGLEFINANCE, GitHub Gist API, RapidAPI (Zillow) |
 | *"Allow this app to run when you are not present"* | `script.scriptapp` | Weekly cron trigger for Real Estate price updates |
 | *"Display third-party web content in sidebars"* | `script.container.ui` | Setup wizard dialog (GitHub + Drive onboarding) |
 
-> **Critically: WealthScript does NOT request full Google Drive access.**
-> The `drive.file` scope is used for backups \u2014 which means the app can only see and modify files **it created itself**. It cannot read, list, or modify any other file in your Google Drive.
-
-> **On the "unverified app" warning:** WealthScript is an open-source personal tool, not a submitted Google Workspace Add-on. Google shows this warning for any self-deployed script that isn't registered through their OAuth verification program. You are running your own code in your own account \u2014 clicking "Advanced \u2192 Go to project (unsafe)" is safe and expected.
+> **On the "unverified app" warning:** WealthScript is an open-source personal tool, not a submitted Google Workspace Add-on. Google shows this warning for any self-deployed script that isn't registered through their OAuth verification program. You are running your own code in your own account — clicking "Advanced → Go to project (unsafe)" is safe and expected.

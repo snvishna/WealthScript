@@ -44,12 +44,8 @@ function test_endToEndIntegration() {
   } finally {
     if (testSs) {
       try {
-        // Teardown via Drive REST API (drive.file scope compliant)
-        const token = ScriptApp.getOAuthToken();
-        UrlFetchApp.fetch(
-          `https://www.googleapis.com/drive/v3/files/${testSs.getId()}`,
-          { method: "DELETE", headers: { Authorization: "Bearer " + token }, muteHttpExceptions: true }
-        );
+        // Teardown via DriveApp — trashes the sandbox spreadsheet
+        DriveApp.getFileById(testSs.getId()).setTrashed(true);
         Logger.log("Sandbox deleted ✅");
       } catch (e) {
         Logger.log("⚠️ Teardown warning: " + e.message);
@@ -353,34 +349,35 @@ function _e2e_githubIntegrationContracts() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// SECTION 12: GOOGLE DRIVE API CONTRACTS (drive.file scope)
+// SECTION 12: GOOGLE DRIVE BACKUP CONTRACTS (DriveApp)
 // ─────────────────────────────────────────────────────────────
 function _e2e_driveApiContracts() {
-  // _getDriveToken must return a non-empty string
-  const token = _getDriveToken();
-  Assert.isTrue(typeof token === "string" && token.length > 0, "E2E-DRIVE: OAuth token is available");
+  // backupToGoogleDrive must succeed with a sandbox spreadsheet (DriveApp, silent)
+  const testSs = SpreadsheetApp.create("WealthScript_E2E_DriveTest_" + Date.now());
+  let testFolder;
 
-  // _createDriveFolder must create a real folder and return an ID
-  const folderId = _createDriveFolder("WealthScript_E2E_TestFolder_" + Date.now());
-  Assert.isTrue(typeof folderId === "string" && folderId.length > 0, "E2E-DRIVE: Folder was created, ID returned");
-
-  // _createDriveFile must write a file into that folder
-  const fileId = _createDriveFile(folderId, "test_backup.json", '{"test": true}');
-  Assert.isTrue(typeof fileId === "string" && fileId.length > 0, "E2E-DRIVE: File was created inside folder");
-
-  // _getDriveFileLink must return a HTTPS URL
-  const link = _getDriveFileLink(folderId);
-  Assert.isTrue(link.startsWith("https://"), "E2E-DRIVE: Folder link is a valid HTTPS URL");
-
-  // Cleanup the test folder
   try {
-    const t = _getDriveToken();
-    UrlFetchApp.fetch(`https://www.googleapis.com/drive/v3/files/${folderId}`,
-      { method: "DELETE", headers: { Authorization: "Bearer " + t }, muteHttpExceptions: true }
-    );
-  } catch(e) { Logger.log("⚠️ Drive cleanup warning: " + e.message); }
+    runFirstTimeSetup(testSs, true);
+    const result = backupToGoogleDrive(testSs, true);
+    Assert.isTrue(result.success === true, "E2E-DRIVE: backupToGoogleDrive returns success:true");
+    Assert.isTrue(result.folder !== null, "E2E-DRIVE: backupToGoogleDrive returns a DriveApp Folder object");
 
-  Logger.log("✅ S12: Google Drive REST API contracts verified (drive.file scope)");
+    // Verify the folder name
+    Assert.equal(result.folder.getName(), "WealthScript \u2014 Backups",
+      "E2E-DRIVE: backup folder is named 'WealthScript — Backups'");
+
+    // Verify at least one JSON file was created inside
+    const files = result.folder.getFilesByType(MimeType.PLAIN_TEXT);
+    Assert.isTrue(files.hasNext(), "E2E-DRIVE: At least one backup JSON file exists in the folder");
+
+    testFolder = result.folder;
+  } finally {
+    // Cleanup: trash the test spreadsheet and backup folder
+    try { DriveApp.getFileById(testSs.getId()).setTrashed(true); } catch(e) {}
+    try { if (testFolder) testFolder.setTrashed(true); } catch(e) {}
+  }
+
+  Logger.log("✅ S12: Google Drive (DriveApp) backup contracts verified");
 }
 
 // ─────────────────────────────────────────────────────────────

@@ -21,7 +21,28 @@ Run `runAllTests()` from the Google Apps Script editor (or via clasp run).
 
 - The suite spins up a live sandbox spreadsheet (`Integration.test.gs`).
 - **ABORT if ANY assertion fails.** Fix the logic, restart the pipeline.
-- E2E tests must exercise live data paths — **do not mock volatile dependencies** (e.g., GOOGLEFINANCE, Drive REST API). If a test needs to inject data, it must still allow the formula chain to run natively (e.g., `SpreadsheetApp.flush()` + `Utilities.sleep()`).
+- E2E tests must exercise live data paths — **do not mock volatile dependencies** (e.g., GOOGLEFINANCE, Drive). If a test needs to inject data, it must still allow the formula chain to run natively (e.g., `SpreadsheetApp.flush()` + `Utilities.sleep()`).
+
+---
+
+## Step 3 — Dead Code & Consistency Sweep (REQUIRED)
+
+Before linting, perform a full codebase audit. Search for and eliminate:
+
+```bash
+# Run these searches and resolve every hit before proceeding:
+grep -rn "TODO\|FIXME\|DEPRECATED\|@temp" src/ tests/
+grep -rn "console\.log" src/   # should be Logger.log
+```
+
+Additionally verify:
+1. **No orphan function references** — every helper called in `src/` must be defined in `src/`. Every helper called in `tests/` must exist in `src/` or `tests/`.
+2. **No stale comments** — if a comment describes an approach that was replaced (e.g., references to a removed API, old function names), update or remove it.
+3. **No duplicate function definitions** — run `grep -n "^function " src/*.gs | sort | uniq -d` and resolve any duplicates.
+4. **No architectural drift in tests** — if an architectural decision was reversed (e.g., DriveApp vs REST API), verify tests reflect the current approach, not the abandoned one.
+
+> [!CAUTION]
+> This step exists because duplicate `_createDriveFolder` and stale "REST API" references in tests slipped through a previous commit. These would have failed at runtime and were only caught by manual review. The dead code sweep makes this mechanical and non-negotiable.
 
 ---
 
