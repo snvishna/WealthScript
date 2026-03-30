@@ -190,8 +190,11 @@ function setupDriveBackup() {
   }
 
   try {
-    const folderId = _createDriveFolder(FOLDER_NAME);
-    const folderUrl = _getDriveFileLink(folderId);
+    const folderIterator = DriveApp.getFoldersByName(FOLDER_NAME);
+    const folder = folderIterator.hasNext()
+      ? folderIterator.next()
+      : DriveApp.createFolder(FOLDER_NAME);
+    const folderUrl = folder.getUrl();
 
     const richDriveLink = SpreadsheetApp.newRichTextValue()
       .setText(folderUrl)
