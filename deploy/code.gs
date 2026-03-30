@@ -623,7 +623,19 @@ function buildPortfolioTracker() {
 
   sheet.getRange(7, 1, DEFAULT_PORTFOLIO_DATA.length, headers.length).setValues(DEFAULT_PORTFOLIO_DATA);
 
+  // --- Link Brokerage Current Values to Holdings Tab ---
+  // For any row with Asset Class = "Brokerage", inject a SUMIF formula in column E
+  // that aggregates the Total Value from the Brokerage Holdings tab by Account Name.
   const NUM_ROWS = 70;
+  for (let i = 0; i < DEFAULT_PORTFOLIO_DATA.length; i++) {
+    if (DEFAULT_PORTFOLIO_DATA[i][1] === "Brokerage") {
+      const r = i + 7;
+      sheet.getRange(r, 5).setFormula(
+        `=IFERROR(SUMIF('Brokerage Holdings'!A:A,A${r},'Brokerage Holdings'!E:E),0)`
+      );
+    }
+  }
+
   const exch = [], gross = [], net = [];
   for (let i = 0; i < NUM_ROWS; i++) {
     const r = i + 7;
