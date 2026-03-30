@@ -125,8 +125,8 @@ function onOpen() {
  */
 function runFirstTimeSetup() {
   buildSettingsTab();
-  buildPortfolioTracker();
   buildHoldingsTab();
+  buildPortfolioTracker();
   buildSnapshotTab();
   buildCashFlowTab();
 
