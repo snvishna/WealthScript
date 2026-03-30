@@ -76,16 +76,32 @@ From the **WealthScript** menu, click **☁️ Force Cloud Backup** to trigger b
 ### Phase 1: Deploy the Engine
 1. Create a blank [Google Sheet](https://sheets.new).
 2. Go to **Extensions > Apps Script**.
-3. Delete the default code. Open the following link and paste the **entire contents** into the Apps Script editor:
-   👉 **[deploy/code.gs](./deploy/code.gs)** 
-   *(Note: This distribution file is automatically compiled from the `src/` modules for easy installation).*
-4. *(Optional)* Paste your GitHub PAT into the `CLOUD_SYNC_CONFIG` block at the top of the file.
+3. Delete the default `Code.gs` file. Paste the **entire contents** of [`deploy/code.gs`](./deploy/code.gs) into the editor.
+   *(This distribution file is auto-compiled from `src/` modules for easy installation.)*
+4. **⚠️ Required — Apply the Permission Manifest (one-time):**
+   - In the Apps Script editor, click the ⚙️ **Project Settings** gear icon (left sidebar).
+   - Scroll down and enable **"Show `appsscript.json` manifest file in editor"**.
+   - Click **`appsscript.json`** in the file list.
+   - Replace its entire contents with the contents of [`deploy/appsscript.json`](./deploy/appsscript.json).
+   - Click **Save** (💾).
+
+   > **Why this matters:** Without this step, Google auto-detects scopes from your code and requests the broadest possible permissions — including full Google Drive access. With the manifest applied, WealthScript requests only the 4 minimal permissions it actually needs (see [OAuth Scopes](#-oauth-scopes--privacy) below).
+
 5. Click **Save**. Close the Apps Script tab. **Refresh the sheet.**
 
 ### Phase 2: First Time Setup
 1. A **WealthScript** menu will appear in your menu bar.
 2. Click **WealthScript > 🚀 Run First Time Setup**.
-3. Authorize the script when prompted (standard Google OAuth flow).
+3. Authorize the script when prompted. You will see a standard Google OAuth consent screen.
+
+   > **Note on the OAuth prompt:** Google may show an "unverified app" warning because WealthScript is an open-source project, not a published Google Workspace Add-on. This is expected — click **"Advanced" → "Go to [project] (unsafe)"** to proceed. You are authorizing your *own* code running in your *own* Google account.
+   >
+   > The consent screen will list these 4 permissions:
+   > - *"See, edit, create and delete your Sheets"* — to build and update your tracker.
+   > - *"Connect to an external service"* — for GOOGLEFINANCE, GitHub, and RapidAPI.
+   > - *"Allow this app to run when you are not present"* — for the weekly Real Estate cron.
+   > - *"Display third-party web content"* — for the setup wizard dialog.
+
 4. The script builds all tabs and sets up a weekly cron for real estate updates.
 
 ### Phase 3: Configure & Customize
@@ -184,3 +200,21 @@ The repository includes an isolated unit test suite with **52 assertions across 
 | `tests.gs` | 52-assertion isolated unit test suite |
 | `README.md` | This file |
 | `docs/specs/` | Feature specs and architecture documents |
+
+---
+
+## 🔐 OAuth Scopes & Privacy
+
+WealthScript uses a minimal, explicitly declared permission manifest (`deploy/appsscript.json`). Applying it in Step 4 of the Quick Start Guide **replaces auto-detected broad scopes with these 4 specific ones:**
+
+| Permission shown on consent screen | Scope declared | Why it's needed |
+|---|---|---|
+| *"See, edit, create and delete your Sheets"* | `spreadsheets` | Builds tabs, writes balances, updates formulas |
+| *"Connect to an external service"* | `script.external_request` | GOOGLEFINANCE, GitHub Gist API, RapidAPI (Zillow) |
+| *"Allow this app to run when you are not present"* | `script.scriptapp` | Weekly cron trigger for Real Estate price updates |
+| *"Display third-party web content in sidebars"* | `script.container.ui` | Setup wizard dialog (GitHub + Drive onboarding) |
+
+> **Critically: WealthScript does NOT request full Google Drive access.**
+> The `drive.file` scope is used for backups \u2014 which means the app can only see and modify files **it created itself**. It cannot read, list, or modify any other file in your Google Drive.
+
+> **On the "unverified app" warning:** WealthScript is an open-source personal tool, not a submitted Google Workspace Add-on. Google shows this warning for any self-deployed script that isn't registered through their OAuth verification program. You are running your own code in your own account \u2014 clicking "Advanced \u2192 Go to project (unsafe)" is safe and expected.
