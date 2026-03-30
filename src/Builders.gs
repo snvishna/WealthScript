@@ -238,7 +238,27 @@ function buildPortfolioTracker() {
       .setBackground(THEME.negativeValueBg).setFontColor(THEME.negativeValueFg)
       .setRanges([sheet.getRange(7, 9, NUM_ROWS, 1)]).build()
   );
+
+  // --- Current Value UX: Distinguish Manual vs Calculated ---
+  const currentValueRange = sheet.getRange(7, 5, NUM_ROWS, 1);
+  cfRules.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=AND(NOT(ISBLANK(E7)), NOT(ISFORMULA(E7)))')
+      .setFontColor(THEME.accentBlue)
+      .setBold(true)
+      .setRanges([currentValueRange]).build()
+  );
+  cfRules.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=ISFORMULA(E7)')
+      .setFontColor(THEME.mutedText)
+      .setItalic(true)
+      .setRanges([currentValueRange]).build()
+  );
   sheet.setConditionalFormatRules(cfRules);
+
+  // Add an instructional note to the 'Current Value' header (Row 6, Col 5)
+  sheet.getRange(6, 5).setNote("💡 Legend:\n\n• Blue & Bold: Requires manual value input.\n• Muted & Italic: Auto-calculated via formulas (Do not edit).");
 
   sheet.setColumnWidth(1, 220);  
   sheet.setColumnWidth(2, 135);  
