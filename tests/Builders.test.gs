@@ -1,15 +1,12 @@
 function test_buildBrokerageFormulaContract() {
-  // Test expected formula injection format for dashboard rows
-  
-  // Row 7 (first data row)
   const f7 = _buildBrokerageFormula(7);
-  Assert.isTrue(f7.includes("SUMIF('Brokerage Holdings'!A:A"), "contract: matches Brokerage name col");
-  Assert.isTrue(f7.includes("A7"), "contract: pulls the account name from current dashboard row 7");
-  Assert.isTrue(f7.includes("'Brokerage Holdings'!E:E"), "contract: aggregates from Brokerage Total Value col");
-  Assert.isTrue(f7.startsWith("=IFERROR"), "contract: handles missing tabs or errors gracefully");
-  Assert.equal(f7, "=IFERROR(SUMIF('Brokerage Holdings'!A:A,A7,'Brokerage Holdings'!E:E),0)", "contract: exact string match row 7");
+  Assert.isTrue(f7.includes("'Brokerage Holdings'!$A$2:$A$200"), "contract: matches Brokerage account name range");
+  Assert.isTrue(f7.includes("A7"), "contract: pulls account name from dashboard row 7");
+  Assert.isTrue(f7.includes("'Brokerage Holdings'!$E$2:$E$200"), "contract: aggregates from Total Value col");
+  Assert.isTrue(f7.startsWith("=IFERROR"), "contract: wrapped in IFERROR for graceful fallback");
+  Assert.isTrue(f7.includes("SUMPRODUCT"), "contract: uses SUMPRODUCT (not SUMIF) for cross-sheet volatile formula support");
+  Assert.equal(f7, "=IFERROR(SUMPRODUCT(('Brokerage Holdings'!$A$2:$A$200=A7)*('Brokerage Holdings'!$E$2:$E$200)),0)", "contract: exact string match row 7");
 
-  // Row 50
   const f50 = _buildBrokerageFormula(50);
-  Assert.equal(f50, "=IFERROR(SUMIF('Brokerage Holdings'!A:A,A50,'Brokerage Holdings'!E:E),0)", "contract: exact string match row 50");
+  Assert.equal(f50, "=IFERROR(SUMPRODUCT(('Brokerage Holdings'!$A$2:$A$200=A50)*('Brokerage Holdings'!$E$2:$E$200)),0)", "contract: exact string match row 50");
 }

@@ -90,12 +90,14 @@ function buildSettingsTab(ss_inject) {
  * 2. Builds the Dashboard & Ledger with full professional formatting.
  */
 /**
- * Pure helper: Generates the SUMIF formula linking a dashboard row to the Brokerage Holdings tab.
+ * Pure helper: Generates the SUMPRODUCT formula linking a dashboard row to the Brokerage Holdings tab.
+ * Uses SUMPRODUCT instead of SUMIF to correctly handle cross-sheet GOOGLEFINANCE-driven values
+ * (SUMIF can return 0 until a manual refresh when the sum range contains volatile formulas).
  * @param {number} rowNum - The 1-indexed row number on the Dashboard sheet
  * @returns {string} The formula string
  */
 function _buildBrokerageFormula(rowNum) {
-  return `=IFERROR(SUMIF('Brokerage Holdings'!A:A,A${rowNum},'Brokerage Holdings'!E:E),0)`;
+  return `=IFERROR(SUMPRODUCT(('Brokerage Holdings'!$A$2:$A$200=A${rowNum})*('Brokerage Holdings'!$E$2:$E$200)),0)`;
 }
 
 function buildPortfolioTracker(ss_inject) {
@@ -241,15 +243,10 @@ function buildPortfolioTracker(ss_inject) {
       .setRanges([sheet.getRange(7, 9, NUM_ROWS, 1)]).build()
   );
 
-  // --- Current Value UX: Distinguish Manual vs Calculated ---
+  // --- Current Value UX: Formula cells only get a visual lock indicator ---
+  // Only formula-driven cells (e.g., Brokerage SUMIF rows) are styled as muted/italic
+  // to signal "do not override." Manual input cells keep default formatting.
   const currentValueRange = sheet.getRange(7, 5, NUM_ROWS, 1);
-  cfRules.push(
-    SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied('=AND(NOT(ISBLANK(E7)), NOT(ISFORMULA(E7)))')
-      .setFontColor(THEME.accentBlue)
-      .setBold(true)
-      .setRanges([currentValueRange]).build()
-  );
   cfRules.push(
     SpreadsheetApp.newConditionalFormatRule()
       .whenFormulaSatisfied('=ISFORMULA(E7)')
@@ -260,7 +257,7 @@ function buildPortfolioTracker(ss_inject) {
   sheet.setConditionalFormatRules(cfRules);
 
   // Add an instructional note to the 'Current Value' header (Row 6, Col 5)
-  sheet.getRange(6, 5).setNote("💡 Legend:\n\n• Blue & Bold: Requires manual value input.\n• Muted & Italic: Auto-calculated via formulas (Do not edit).");
+  sheet.getRange(6, 5).setNote("💡 Muted italic = Auto-calculated from Holdings tab (do not manually edit).\n\nAll other rows: type your current balance here.");
 
   sheet.setColumnWidth(1, 220);  
   sheet.setColumnWidth(2, 135);  
