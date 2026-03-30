@@ -26,8 +26,8 @@ function runFirstTimeSetup(ss_inject, silent = false) {
   const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   
   buildSettingsTab(ss);
-  buildPortfolioTracker(ss);
-  buildHoldingsTab(ss);
+  buildHoldingsTab(ss);      // must exist BEFORE buildPortfolioTracker injects SUMPRODUCT formulas
+  buildPortfolioTracker(ss); // references 'Brokerage Holdings' tab — tab must already exist
   buildSnapshotTab(ss);
   buildCashFlowTab(ss);
 
