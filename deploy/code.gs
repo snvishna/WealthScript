@@ -949,6 +949,7 @@ function updateVisualDashboards() {
       .setOption('vAxis', { gridlines: {color: THEME.charts.gridlines}, textStyle: {color: THEME.charts.axisText}, format: '$#,###' })
       .setOption('hAxis', { textStyle: {color: THEME.charts.axisText}, format: 'MMM yyyy' })
       .setOption('legend', {position: 'top', alignment: 'end', textStyle: {fontSize: 12, color: THEME.charts.legendText}})
+      .setOption('trendlines', {0: {type: 'polynomial', degree: 2, color: THEME.charts.legendText, opacity: 0.3, visibleInLegend: true, labelInLegend: 'Trend'}})
       .setOption('series', {
         0: {label: 'Total Net Worth'}
       })
@@ -967,6 +968,7 @@ function updateVisualDashboards() {
       .setOption('title', 'Liquidity Profile: Liquid vs. Locked Assets')
       .setOption('isStacked', true)
       .setOption('colors', THEME.charts.stacked) 
+      .setOption('dataOpacity', 0.85)
       .setOption('backgroundColor', { fill: 'transparent' })
       .setOption('chartArea', {left: '10%', top: '15%', width: '85%', height: '70%'})
       .setOption('vAxis', { gridlines: {color: THEME.charts.gridlines}, textStyle: {color: THEME.charts.axisText}, format: '$#,###' })
