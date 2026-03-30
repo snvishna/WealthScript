@@ -1,5 +1,5 @@
-function buildSettingsTab() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function buildSettingsTab(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("Settings & Config");
   if (!sheet) sheet = ss.insertSheet("Settings & Config");
   else sheet.clear();
@@ -98,8 +98,8 @@ function _buildBrokerageFormula(rowNum) {
   return `=IFERROR(SUMIF('Brokerage Holdings'!A:A,A${rowNum},'Brokerage Holdings'!E:E),0)`;
 }
 
-function buildPortfolioTracker() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function buildPortfolioTracker(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("Dashboard & Ledger");
   if (!sheet) sheet = ss.insertSheet("Dashboard & Ledger");
   else sheet.clear();
@@ -279,8 +279,8 @@ function buildPortfolioTracker() {
 /**
  * 3. Builds the Brokerage Holdings Tab 
  */
-function buildHoldingsTab() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function buildHoldingsTab(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("Brokerage Holdings");
   if (!sheet) sheet = ss.insertSheet("Brokerage Holdings");
   else sheet.clear(); 
@@ -342,8 +342,8 @@ function buildSnapshotTab() {
 /**
  * 5. Builds the Cash Flow & Burn Tab
  */
-function buildCashFlowTab() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function buildCashFlowTab(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("💸 Cash Flow & Burn");
   if (!sheet) sheet = ss.insertSheet("💸 Cash Flow & Burn");
   else sheet.clear();

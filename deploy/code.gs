@@ -122,13 +122,17 @@ function onOpen() {
 
 /**
  * MASTER SETUP: Builds all tabs and sets up automated cron jobs.
+ * @param {SpreadsheetApp.Spreadsheet} [ss_inject] - Optional target spreadsheet
+ * @param {boolean} [silent=false] - Whether to suppress UI alerts
  */
-function runFirstTimeSetup() {
-  buildSettingsTab();
-  buildPortfolioTracker();
-  buildHoldingsTab();
-  buildSnapshotTab();
-  buildCashFlowTab();
+function runFirstTimeSetup(ss_inject, silent = false) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  
+  buildSettingsTab(ss);
+  buildPortfolioTracker(ss);
+  buildHoldingsTab(ss);
+  buildSnapshotTab(ss);
+  buildCashFlowTab(ss);
 
   // Setup the Weekly Real Estate Trigger
   const triggers = ScriptApp.getProjectTriggers();
@@ -150,16 +154,18 @@ function runFirstTimeSetup() {
       .create();
   }
 
-  SpreadsheetApp.getUi().alert(
-    "✅ Setup Complete!\n\n" +
-    "Your dashboard and all tabs are ready.\n\n" +
-    "📋 Next Steps:\n" +
-    "1. Review the 'Settings & Config' tab\n" +
-    "2. Highlight rows 7+ on your Dashboard → Format > Convert to Table\n\n" +
-    "☁️ Secure Your Data (Optional):\n" +
-    "• WealthScript > 🔐 Setup GitHub Backup\n" +
-    "• WealthScript > 📁 Setup Google Drive Backup"
-  );
+  if (!silent) {
+    SpreadsheetApp.getUi().alert(
+      "✅ Setup Complete!\n\n" +
+      "Your dashboard and all tabs are ready.\n\n" +
+      "📋 Next Steps:\n" +
+      "1. Review the 'Settings & Config' tab\n" +
+      "2. Highlight rows 7+ on your Dashboard → Format > Convert to Table\n\n" +
+      "☁️ Secure Your Data (Optional):\n" +
+      "• WealthScript > 🔐 Setup GitHub Backup\n" +
+      "• WealthScript > 📁 Setup Google Drive Backup"
+    );
+  }
 }
 /**
  * ==========================================
@@ -427,8 +433,8 @@ function updateRealEstatePrices() {
     sheet.getRange("E1:E100").setValues(currentValues);
   }
 }
-function buildSettingsTab() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function buildSettingsTab(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("Settings & Config");
   if (!sheet) sheet = ss.insertSheet("Settings & Config");
   else sheet.clear();
@@ -527,8 +533,8 @@ function _buildBrokerageFormula(rowNum) {
   return `=IFERROR(SUMIF('Brokerage Holdings'!A:A,A${rowNum},'Brokerage Holdings'!E:E),0)`;
 }
 
-function buildPortfolioTracker() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function buildPortfolioTracker(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("Dashboard & Ledger");
   if (!sheet) sheet = ss.insertSheet("Dashboard & Ledger");
   else sheet.clear();
@@ -708,8 +714,8 @@ function buildPortfolioTracker() {
 /**
  * 3. Builds the Brokerage Holdings Tab 
  */
-function buildHoldingsTab() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function buildHoldingsTab(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("Brokerage Holdings");
   if (!sheet) sheet = ss.insertSheet("Brokerage Holdings");
   else sheet.clear(); 
@@ -771,8 +777,8 @@ function buildSnapshotTab() {
 /**
  * 5. Builds the Cash Flow & Burn Tab
  */
-function buildCashFlowTab() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function buildCashFlowTab(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("💸 Cash Flow & Burn");
   if (!sheet) sheet = ss.insertSheet("💸 Cash Flow & Burn");
   else sheet.clear();
@@ -965,9 +971,11 @@ function updateVisualDashboards() {
 /**
  * Execute a manual snapshot. Calculates deltas, generates insights,
  * then chains cloud backups with transparent status reporting.
+ * @param {SpreadsheetApp.Spreadsheet} [ss_inject] - Target spreadsheet
+ * @param {boolean} [silent=false] - Suppress UI reports
  */
-function captureSnapshot() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function captureSnapshot(ss_inject, silent = false) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   const mainSheet = ss.getSheetByName("Dashboard & Ledger");
   const logSheet = ss.getSheetByName("Snapshots");
   const configSheet = ss.getSheetByName("Settings & Config");
@@ -1024,8 +1032,8 @@ function captureSnapshot() {
   
   // --- Cloud Backup Chain with Transparent Status ---
   const gistConfigured = _isGistConfigured(configSheet);
-  const gistOk    = gistConfigured ? backupToGitHub(true) : false;
-  const driveOk   = backupToGoogleDrive(true);
+  const gistOk    = gistConfigured ? backupToGitHub(ss, true) : false;
+  const driveOk   = backupToGoogleDrive(ss, true);
 
   // Build transparent status message
   const statusParts = ["✅ Snapshot captured successfully!"];
@@ -1048,7 +1056,9 @@ function captureSnapshot() {
     statusParts.push("\n💡 Tip: Set up cloud backups from the WealthScript menu:\n• 🔐 Setup GitHub Backup\n• 📁 Setup Google Drive Backup");
   }
 
-  SpreadsheetApp.getUi().alert(statusParts.join("\n"));
+  if (!silent) {
+    SpreadsheetApp.getUi().alert(statusParts.join("\n"));
+  }
 
   updateVisualDashboards(); 
 }
@@ -1106,9 +1116,10 @@ function _buildEnrichedBackup(ss) {
 }
 
 /** Manual trigger: runs both Gist and Drive backups with UI alerts. */
-function forceBackup() {
-  backupToGitHub(false);
-  backupToGoogleDrive(false);
+function forceBackup(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  backupToGitHub(ss, false);
+  backupToGoogleDrive(ss, false);
 }
 
 /**
@@ -1154,11 +1165,12 @@ function _isGistConfigured(configSheet) {
 /**
  * Disaster Recovery: Serializes live ledger into enriched JSON and pushes to a private GitHub Gist.
  * Silently skips if not configured (no errors thrown).
- * @param {boolean} silent - If true, suppresses UI alerts on success.
+ * @param {SpreadsheetApp.Spreadsheet} [ss_inject] - Target spreadsheet (for injection)
+ * @param {boolean} [silent=false] - If true, suppresses UI alerts on success.
  * @returns {boolean} Whether the backup was attempted and succeeded.
  */
-function backupToGitHub(silent = false) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function backupToGitHub(ss_inject, silent = false) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   const configSheet = ss.getSheetByName("Settings & Config");
 
   if (!_isGistConfigured(configSheet)) {
@@ -1210,12 +1222,13 @@ function backupToGitHub(silent = false) {
  * Google Drive Backup: serializes the enriched ledger to a dated JSON file.
  * Creates a "WealthScript — Backups" folder in Drive automatically.
  * Silently skips if Drive access fails.
+ * @param {SpreadsheetApp.Spreadsheet} [ss_inject] - Target spreadsheet (for injection)
  * @param {boolean} [silent=false] - Suppresses UI alerts on success.
  * @returns {boolean} Whether the backup succeeded.
  */
-function backupToGoogleDrive(silent = false) {
+function backupToGoogleDrive(ss_inject, silent = false) {
   const FOLDER_NAME = "WealthScript \u2014 Backups";
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
 
   try {
     const backupData = _buildEnrichedBackup(ss);

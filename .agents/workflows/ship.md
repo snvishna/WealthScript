@@ -8,14 +8,14 @@ You must execute the following steps sequentially. If any step fails, ABORT the 
 1. **Test Generation:**
    - Execute `@.agents/workflows/generate-tests.md` to ensure all new logic has coverage.
 
-2. **Test Execution:**
-   - Execute the logic defined in `@.agents/workflows/generate-tests.md`.
-   - Simulate a run of the newly generated test functions. If any `Assert` throws an error, ABORT the pipeline, fix the underlying logic in `src/**/*.gs`, and restart the pipeline.
-   
+2. **Integration & E2E Test Execution (Strict Gate):**
+   - Execute the native Apps Script test runner (`RunAll.test.gs`).
+   - Note: The test runner now spins up a live `Integration.test.gs` spreadsheet sandbox.
+   - Wait for the final `All tests passed ✅` log. If ANY assertion fails, ABORT the pipeline entirely. Do not commit failing logic.
+
 3. **UI & Formula Smoke Checks:**
-   - Verify visually or mentally that the generated dashboard correctly renders the expected specific logic:
-     - Check: Brokerage account `Current Value` pulls correctly from the `Brokerage Holdings` sheet via SUMIF injection.
-     - Check: Any new UI themes or layouts correctly render in the test environment (or script logic validation).
+   - The `Integration.test.gs` verifies core cross-tab linkage dynamically.
+   - For bespoke UI or new layouts, visually confirm expected styling in a sandbox.
 
 4. **Pre-Flight Check (Linting):**
    - Execute the logic defined in `@.agents/workflows/lint-code.md`.

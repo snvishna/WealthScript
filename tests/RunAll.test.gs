@@ -14,5 +14,6 @@ function runAllTests() {
   test_validatePATFormat();
   test_buildGistUrl();
   test_buildBrokerageFormulaContract();
-  Logger.log('=== All tests passed ✅ (67 assertions) ===');
+  test_endToEndIntegration();
+  Logger.log('=== All tests passed ✅ (75+ assertions) ===');
 }

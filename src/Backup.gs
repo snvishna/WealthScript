@@ -52,9 +52,10 @@ function _buildEnrichedBackup(ss) {
 }
 
 /** Manual trigger: runs both Gist and Drive backups with UI alerts. */
-function forceBackup() {
-  backupToGitHub(false);
-  backupToGoogleDrive(false);
+function forceBackup(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  backupToGitHub(ss, false);
+  backupToGoogleDrive(ss, false);
 }
 
 /**
@@ -100,11 +101,12 @@ function _isGistConfigured(configSheet) {
 /**
  * Disaster Recovery: Serializes live ledger into enriched JSON and pushes to a private GitHub Gist.
  * Silently skips if not configured (no errors thrown).
- * @param {boolean} silent - If true, suppresses UI alerts on success.
+ * @param {SpreadsheetApp.Spreadsheet} [ss_inject] - Target spreadsheet (for injection)
+ * @param {boolean} [silent=false] - If true, suppresses UI alerts on success.
  * @returns {boolean} Whether the backup was attempted and succeeded.
  */
-function backupToGitHub(silent = false) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function backupToGitHub(ss_inject, silent = false) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   const configSheet = ss.getSheetByName("Settings & Config");
 
   if (!_isGistConfigured(configSheet)) {
@@ -156,12 +158,13 @@ function backupToGitHub(silent = false) {
  * Google Drive Backup: serializes the enriched ledger to a dated JSON file.
  * Creates a "WealthScript — Backups" folder in Drive automatically.
  * Silently skips if Drive access fails.
+ * @param {SpreadsheetApp.Spreadsheet} [ss_inject] - Target spreadsheet (for injection)
  * @param {boolean} [silent=false] - Suppresses UI alerts on success.
  * @returns {boolean} Whether the backup succeeded.
  */
-function backupToGoogleDrive(silent = false) {
+function backupToGoogleDrive(ss_inject, silent = false) {
   const FOLDER_NAME = "WealthScript \u2014 Backups";
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
 
   try {
     const backupData = _buildEnrichedBackup(ss);
