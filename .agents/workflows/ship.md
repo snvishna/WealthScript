@@ -12,7 +12,12 @@ You must execute the following steps sequentially. If any step fails, ABORT the 
    - Execute the logic defined in `@.agents/workflows/generate-tests.md`.
    - Simulate a run of the newly generated test functions. If any `Assert` throws an error, ABORT the pipeline, fix the underlying logic in `src/**/*.gs`, and restart the pipeline.
    
-3. **Pre-Flight Check (Linting):**
+3. **UI & Formula Smoke Checks:**
+   - Verify visually or mentally that the generated dashboard correctly renders the expected specific logic:
+     - Check: Brokerage account `Current Value` pulls correctly from the `Brokerage Holdings` sheet via SUMIF injection.
+     - Check: Any new UI themes or layouts correctly render in the test environment (or script logic validation).
+
+4. **Pre-Flight Check (Linting):**
    - Execute the logic defined in `@.agents/workflows/lint-code.md`.
    - Ensure all SOLID principles and Google Apps Script standards are met.
    

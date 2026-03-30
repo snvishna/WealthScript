@@ -518,6 +518,15 @@ function buildSettingsTab() {
 /**
  * 2. Builds the Dashboard & Ledger with full professional formatting.
  */
+/**
+ * Pure helper: Generates the SUMIF formula linking a dashboard row to the Brokerage Holdings tab.
+ * @param {number} rowNum - The 1-indexed row number on the Dashboard sheet
+ * @returns {string} The formula string
+ */
+function _buildBrokerageFormula(rowNum) {
+  return `=IFERROR(SUMIF('Brokerage Holdings'!A:A,A${rowNum},'Brokerage Holdings'!E:E),0)`;
+}
+
 function buildPortfolioTracker() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("Dashboard & Ledger");
@@ -609,7 +618,6 @@ function buildPortfolioTracker() {
     .setNumberFormat("0.0%").setFontColor(THEME.quickStats.fireFg).setFontSize(11).setFontWeight("bold");
 
   sheet.setRowHeight(4, 28);
-
   sheet.getRange("A5:K5").setBackground(THEME.accentBar);
   sheet.setRowHeight(5, 3);
 
@@ -622,17 +630,11 @@ function buildPortfolioTracker() {
   sheet.setRowHeight(6, 36);
 
   sheet.getRange(7, 1, DEFAULT_PORTFOLIO_DATA.length, headers.length).setValues(DEFAULT_PORTFOLIO_DATA);
-
-  // --- Link Brokerage Current Values to Holdings Tab ---
-  // For any row with Asset Class = "Brokerage", inject a SUMIF formula in column E
-  // that aggregates the Total Value from the Brokerage Holdings tab by Account Name.
   const NUM_ROWS = 70;
   for (let i = 0; i < DEFAULT_PORTFOLIO_DATA.length; i++) {
     if (DEFAULT_PORTFOLIO_DATA[i][1] === "Brokerage") {
       const r = i + 7;
-      sheet.getRange(r, 5).setFormula(
-        `=IFERROR(SUMIF('Brokerage Holdings'!A:A,A${r},'Brokerage Holdings'!E:E),0)`
-      );
+      sheet.getRange(r, 5).setFormula(_buildBrokerageFormula(r));
     }
   }
 
