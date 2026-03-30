@@ -1,9 +1,11 @@
 /**
  * Execute a manual snapshot. Calculates deltas, generates insights,
  * then chains cloud backups with transparent status reporting.
+ * @param {SpreadsheetApp.Spreadsheet} [ss_inject] - Target spreadsheet
+ * @param {boolean} [silent=false] - Suppress UI reports
  */
-function captureSnapshot() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function captureSnapshot(ss_inject, silent = false) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   const mainSheet = ss.getSheetByName("Dashboard & Ledger");
   const logSheet = ss.getSheetByName("Snapshots");
   const configSheet = ss.getSheetByName("Settings & Config");
@@ -60,8 +62,9 @@ function captureSnapshot() {
   
   // --- Cloud Backup Chain with Transparent Status ---
   const gistConfigured = _isGistConfigured(configSheet);
-  const gistOk    = gistConfigured ? backupToGitHub(true) : false;
-  const driveOk   = backupToGoogleDrive(true);
+  const gistOk    = gistConfigured ? backupToGitHub(ss, true) : false;
+  const driveResult = backupToGoogleDrive(ss, true);
+  const driveOk   = driveResult && driveResult.success;
 
   // Build transparent status message
   const statusParts = ["✅ Snapshot captured successfully!"];
@@ -84,7 +87,9 @@ function captureSnapshot() {
     statusParts.push("\n💡 Tip: Set up cloud backups from the WealthScript menu:\n• 🔐 Setup GitHub Backup\n• 📁 Setup Google Drive Backup");
   }
 
-  SpreadsheetApp.getUi().alert(statusParts.join("\n"));
+  if (!silent) {
+    SpreadsheetApp.getUi().alert(statusParts.join("\n"));
+  }
 
   updateVisualDashboards(); 
 }

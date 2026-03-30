@@ -1,5 +1,5 @@
-function buildSettingsTab() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function buildSettingsTab(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("Settings & Config");
   if (!sheet) sheet = ss.insertSheet("Settings & Config");
   else sheet.clear();
@@ -89,8 +89,19 @@ function buildSettingsTab() {
 /**
  * 2. Builds the Dashboard & Ledger with full professional formatting.
  */
-function buildPortfolioTracker() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+/**
+ * Pure helper: Generates the SUMPRODUCT formula linking a dashboard row to the Brokerage Holdings tab.
+ * Uses N() to coerce empty strings in the Total Value column to 0, preventing #VALUE! errors
+ * that IFERROR would silently swallow (returning 0 instead of the actual sum).
+ * @param {number} rowNum - The 1-indexed row number on the Dashboard sheet
+ * @returns {string} The formula string
+ */
+function _buildBrokerageFormula(rowNum) {
+  return `=SUMPRODUCT(('Brokerage Holdings'!$A$2:$A$200=A${rowNum})*N('Brokerage Holdings'!$E$2:$E$200))`;
+}
+
+function buildPortfolioTracker(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("Dashboard & Ledger");
   if (!sheet) sheet = ss.insertSheet("Dashboard & Ledger");
   else sheet.clear();
@@ -180,7 +191,6 @@ function buildPortfolioTracker() {
     .setNumberFormat("0.0%").setFontColor(THEME.quickStats.fireFg).setFontSize(11).setFontWeight("bold");
 
   sheet.setRowHeight(4, 28);
-
   sheet.getRange("A5:K5").setBackground(THEME.accentBar);
   sheet.setRowHeight(5, 3);
 
@@ -193,8 +203,19 @@ function buildPortfolioTracker() {
   sheet.setRowHeight(6, 36);
 
   sheet.getRange(7, 1, DEFAULT_PORTFOLIO_DATA.length, headers.length).setValues(DEFAULT_PORTFOLIO_DATA);
-
   const NUM_ROWS = 70;
+  for (let i = 0; i < DEFAULT_PORTFOLIO_DATA.length; i++) {
+    if (DEFAULT_PORTFOLIO_DATA[i][1] === "Brokerage") {
+      const r = i + 7;
+      const cell = sheet.getRange(r, 5);
+      cell.setFormula(_buildBrokerageFormula(r));
+      // Warning-only protection: native Google Sheets dialog fires when user tries to edit
+      cell.protect()
+        .setWarningOnly(true)
+        .setDescription("Auto-calculated from Brokerage Holdings tab. Editing will override live market data.");
+    }
+  }
+
   const exch = [], gross = [], net = [];
   for (let i = 0; i < NUM_ROWS; i++) {
     const r = i + 7;
@@ -226,7 +247,22 @@ function buildPortfolioTracker() {
       .setBackground(THEME.negativeValueBg).setFontColor(THEME.negativeValueFg)
       .setRanges([sheet.getRange(7, 9, NUM_ROWS, 1)]).build()
   );
+
+  // --- Current Value UX: Formula cells only get a visual lock indicator ---
+  // Only formula-driven cells (e.g., Brokerage SUMIF rows) are styled as muted/italic
+  // to signal "do not override." Manual input cells keep default formatting.
+  const currentValueRange = sheet.getRange(7, 5, NUM_ROWS, 1);
+  cfRules.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=ISFORMULA(E7)')
+      .setFontColor(THEME.mutedText)
+      .setItalic(true)
+      .setRanges([currentValueRange]).build()
+  );
   sheet.setConditionalFormatRules(cfRules);
+
+  // Add an instructional note to the 'Current Value' header (Row 6, Col 5)
+  sheet.getRange(6, 5).setNote("💡 Muted italic = Auto-calculated from Holdings tab (do not manually edit).\n\nAll other rows: type your current balance here.");
 
   sheet.setColumnWidth(1, 220);  
   sheet.setColumnWidth(2, 135);  
@@ -245,8 +281,8 @@ function buildPortfolioTracker() {
 /**
  * 3. Builds the Brokerage Holdings Tab 
  */
-function buildHoldingsTab() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function buildHoldingsTab(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("Brokerage Holdings");
   if (!sheet) sheet = ss.insertSheet("Brokerage Holdings");
   else sheet.clear(); 
@@ -308,8 +344,8 @@ function buildSnapshotTab() {
 /**
  * 5. Builds the Cash Flow & Burn Tab
  */
-function buildCashFlowTab() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function buildCashFlowTab(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName("💸 Cash Flow & Burn");
   if (!sheet) sheet = ss.insertSheet("💸 Cash Flow & Burn");
   else sheet.clear();

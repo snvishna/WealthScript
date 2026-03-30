@@ -19,13 +19,17 @@ function onOpen() {
 
 /**
  * MASTER SETUP: Builds all tabs and sets up automated cron jobs.
+ * @param {SpreadsheetApp.Spreadsheet} [ss_inject] - Optional target spreadsheet
+ * @param {boolean} [silent=false] - Whether to suppress UI alerts
  */
-function runFirstTimeSetup() {
-  buildSettingsTab();
-  buildHoldingsTab();
-  buildPortfolioTracker();
-  buildSnapshotTab();
-  buildCashFlowTab();
+function runFirstTimeSetup(ss_inject, silent = false) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  
+  buildSettingsTab(ss);
+  buildHoldingsTab(ss);      // must exist BEFORE buildPortfolioTracker injects SUMPRODUCT formulas
+  buildPortfolioTracker(ss); // references 'Brokerage Holdings' tab — tab must already exist
+  buildSnapshotTab(ss);
+  buildCashFlowTab(ss);
 
   // Setup the Weekly Real Estate Trigger
   const triggers = ScriptApp.getProjectTriggers();
@@ -47,14 +51,16 @@ function runFirstTimeSetup() {
       .create();
   }
 
-  SpreadsheetApp.getUi().alert(
-    "✅ Setup Complete!\n\n" +
-    "Your dashboard and all tabs are ready.\n\n" +
-    "📋 Next Steps:\n" +
-    "1. Review the 'Settings & Config' tab\n" +
-    "2. Highlight rows 7+ on your Dashboard → Format > Convert to Table\n\n" +
-    "☁️ Secure Your Data (Optional):\n" +
-    "• WealthScript > 🔐 Setup GitHub Backup\n" +
-    "• WealthScript > 📁 Setup Google Drive Backup"
-  );
+  if (!silent) {
+    SpreadsheetApp.getUi().alert(
+      "✅ Setup Complete!\n\n" +
+      "Your dashboard and all tabs are ready.\n\n" +
+      "📋 Next Steps:\n" +
+      "1. Review the 'Settings & Config' tab\n" +
+      "2. Highlight rows 7+ on your Dashboard → Format > Convert to Table\n\n" +
+      "☁️ Secure Your Data (Optional):\n" +
+      "• WealthScript > 🔐 Setup GitHub Backup\n" +
+      "• WealthScript > 📁 Setup Google Drive Backup"
+    );
+  }
 }
