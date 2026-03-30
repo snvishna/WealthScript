@@ -1,15 +1,16 @@
 /**
  * Fetches Zestimates using config from the Settings tab.
+ * @param {SpreadsheetApp.Spreadsheet} [ss_inject] - Target spreadsheet (for DI)
  */
-function updateRealEstatePrices() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function updateRealEstatePrices(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName("Dashboard & Ledger");
   const configSheet = ss.getSheetByName("Settings & Config");
   
-  if(!configSheet) return SpreadsheetApp.getUi().alert("Settings tab missing. Run First Time Setup.");
+  if(!configSheet) return;
 
-  const apiKey = configSheet.getRange("B2").getValue();
-  const apiHost = configSheet.getRange("B3").getValue();
+  const apiKey = configSheet.getRange("B9").getValue();
+  const apiHost = configSheet.getRange("B10").getValue();
   
   if (!apiKey || apiKey === "PASTE_KEY_HERE") return; 
 

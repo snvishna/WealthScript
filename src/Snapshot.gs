@@ -63,7 +63,8 @@ function captureSnapshot(ss_inject, silent = false) {
   // --- Cloud Backup Chain with Transparent Status ---
   const gistConfigured = _isGistConfigured(configSheet);
   const gistOk    = gistConfigured ? backupToGitHub(ss, true) : false;
-  const driveOk   = backupToGoogleDrive(ss, true);
+  const driveResult = backupToGoogleDrive(ss, true);
+  const driveOk   = driveResult && driveResult.success;
 
   // Build transparent status message
   const statusParts = ["✅ Snapshot captured successfully!"];

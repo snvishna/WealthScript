@@ -14,6 +14,6 @@ function runAllTests() {
   test_validatePATFormat();
   test_buildGistUrl();
   test_buildBrokerageFormulaContract();
-  test_endToEndIntegration();
-  Logger.log('=== All tests passed ✅ (75+ assertions) ===');
+  test_endToEndIntegration(); // 14-section E2E sandbox (creates + destroys a live spreadsheet)
+  Logger.log('=== All tests passed ✅ (100+ assertions, 14 functional suites) ===');
 }
