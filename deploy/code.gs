@@ -766,16 +766,18 @@ function buildSnapshotTab() {
 
   const headers = [
     "Date", "Net (USD)", "Liquid (USD)", "Locked (USD)", "Gross (USD)", 
-    "Net (CAD)", "Net (INR)", "Total RE (USD)", "Value Δ (USD)", "% Growth", "FIRE Progress", "Auto-Insights", "Manual Notes"
+    "Net (CAD)", "Net (INR)", "Total RE (USD)", 
+    "Cash (USD)", "Brokerage (USD)", "Retirement (USD)", "Liabilities (USD)", 
+    "Value Δ (USD)", "% Growth", "FIRE Progress", "Auto-Insights", "Manual Notes"
   ];
   sheet.setHiddenGridlines(true);
   
-  sheet.getRange("A1:M1").setValues([headers]).setBackground(THEME.headerBg).setFontColor(THEME.headerText).setFontWeight("bold");
-  sheet.getRange("A2:M100").applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, false, false);
+  sheet.getRange("A1:Q1").setValues([headers]).setBackground(THEME.headerBg).setFontColor(THEME.headerText).setFontWeight("bold");
+  sheet.getRange("A2:Q100").applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, false, false);
   
   sheet.setColumnWidth(1, 150); 
-  sheet.setColumnWidth(12, 350); 
-  sheet.setColumnWidth(13, 200); 
+  sheet.setColumnWidth(16, 350); 
+  sheet.setColumnWidth(17, 200); 
   sheet.setFrozenRows(1);
 }
 
@@ -986,29 +988,34 @@ function updateVisualDashboards() {
 
     uiSheet.insertChart(comboChart);
 
-    // C. Liquid vs Locked (Stacked Column Chart)
-    const stackedBar = uiSheet.newChart()
-      .asColumnChart()
+    // C. Asset Class Evolution (Stacked Area Chart)
+    const stackedArea = uiSheet.newChart()
+      .asAreaChart()
       .addRange(snapSheet.getRange(1, 1, lastSnapRow, 1)) // X: Dates
-      .addRange(snapSheet.getRange(1, 3, lastSnapRow, 1)) // Y1: Liquid
-      .addRange(snapSheet.getRange(1, 4, lastSnapRow, 1)) // Y2: Locked
+      .addRange(snapSheet.getRange(1, 9, lastSnapRow, 1)) // Cash
+      .addRange(snapSheet.getRange(1, 10, lastSnapRow, 1)) // Brokerage
+      .addRange(snapSheet.getRange(1, 11, lastSnapRow, 1)) // Retirement
+      .addRange(snapSheet.getRange(1, 8, lastSnapRow, 1))  // Real Estate
+      .addRange(snapSheet.getRange(1, 12, lastSnapRow, 1)) // Liabilities
       .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
-      .setOption('title', 'Liquidity Profile: Liquid vs. Locked Assets')
+      .setOption('title', 'Historical Asset Class Evolution')
       .setOption('isStacked', true)
-      .setOption('colors', THEME.charts.stacked) 
-      .setOption('dataOpacity', 0.85)
+      .setOption('colors', [THEME.assetRows['Cash'], THEME.assetRows['Brokerage'], THEME.assetRows['Retirement'], THEME.assetRows['Real Estate'], THEME.assetRows['Liability']]) 
       .setOption('backgroundColor', { fill: 'transparent' })
       .setOption('chartArea', {left: '10%', top: '15%', width: '85%', height: '70%'})
       .setOption('vAxis', { gridlines: {color: THEME.charts.gridlines}, textStyle: {color: THEME.charts.axisText}, format: '$#,###' })
       .setOption('legend', {position: 'top', alignment: 'end', textStyle: {fontSize: 12, color: THEME.charts.legendText}})
       .setOption('series', {
-        0: {label: 'Liquid Assets'},
-        1: {label: 'Locked Assets'}
+        0: {label: 'Cash (USD)'},
+        1: {label: 'Brokerage (USD)'},
+        2: {label: 'Retirement (USD)'},
+        3: {label: 'Real Estate (USD)'},
+        4: {label: 'Liabilities (USD)'}
       })
       .setPosition(22, 2, 0, 0) // Row 22, Col B (Below the others)
       .build();
 
-    uiSheet.insertChart(stackedBar);
+    uiSheet.insertChart(stackedArea);
   }
 
   // D. Portfolio X-Ray (Donut Chart)
@@ -1057,6 +1064,7 @@ function captureSnapshot(ss_inject, silent = false) {
   const dataRange = mainSheet.getRange("A7:J80").getValues(); 
   
   let liquidUSD = 0, lockedUSD = 0, totalReUSD = 0;
+  let cashUSD = 0, brokerageUSD = 0, retirementUSD = 0, liabilityUSD = 0;
 
   for (let i = 0; i < dataRange.length; i++) {
     let assetClass = String(dataRange[i][1]);
@@ -1069,7 +1077,12 @@ function captureSnapshot(ss_inject, silent = false) {
       } else {
         lockedUSD += netVal; 
       }
-      if (assetClass === "Real Estate") totalReUSD += netVal;
+      
+      if (assetClass === "Cash") cashUSD += netVal;
+      else if (assetClass === "Brokerage") brokerageUSD += netVal;
+      else if (assetClass === "Retirement") retirementUSD += netVal;
+      else if (assetClass === "Real Estate") totalReUSD += netVal;
+      else if (assetClass === "Liability") liabilityUSD += netVal;
     }
   }
 
@@ -1090,12 +1103,17 @@ function captureSnapshot(ss_inject, silent = false) {
   }
 
   logSheet.insertRowBefore(2);
-  const rowData = [new Date(), netUSD, liquidUSD, lockedUSD, grossUSD, netCAD, netINR, totalReUSD, dollarDelta, pctGrowth, fireProgress, autoInsight, ""];
+  const rowData = [
+    new Date(), netUSD, liquidUSD, lockedUSD, grossUSD, 
+    netCAD, netINR, totalReUSD, 
+    cashUSD, brokerageUSD, retirementUSD, liabilityUSD,
+    dollarDelta, pctGrowth, fireProgress, autoInsight, ""
+  ];
   logSheet.getRange(2, 1, 1, rowData.length).setValues([rowData]);
 
-  logSheet.getRange(2, 2, 1, 7).setNumberFormat("$#,##0.00"); 
-  logSheet.getRange(2, 9).setNumberFormat("[Color10]+$#,##0.00;[Color3]-$#,##0.00"); 
-  logSheet.getRange(2, 10).setNumberFormat("[Color10]+0.00%;[Color3]-0.00%"); 
+  logSheet.getRange(2, 2, 1, 11).setNumberFormat("$#,##0.00"); 
+  logSheet.getRange(2, 13).setNumberFormat("[Color10]+$#,##0.00;[Color3]-$#,##0.00"); 
+  logSheet.getRange(2, 14).setNumberFormat("[Color10]+0.00%;[Color3]-0.00%"); 
   logSheet.getRange(2, 11).setNumberFormat("0.00%"); 
   
   // --- Cloud Backup Chain with Transparent Status ---
@@ -1160,18 +1178,18 @@ function _buildEnrichedBackup(ss) {
   // Latest snapshot row (if exists)
   let latestSnapshot = null;
   if (snapSheet && snapSheet.getLastRow() > 1) {
-    const snapRow = snapSheet.getRange(2, 1, 1, 13).getValues()[0];
+    const snapRow = snapSheet.getRange(2, 1, 1, 17).getValues()[0];
     latestSnapshot = {
       date:         snapRow[0],
       netUSD:       snapRow[1],
       liquidUSD:    snapRow[2],
       lockedUSD:    snapRow[3],
       grossUSD:     snapRow[4],
-      valueDelta:   snapRow[8],
-      pctGrowth:    snapRow[9],
-      fireProgress: snapRow[10],
-      autoInsight:  snapRow[11],
-      manualNotes:  snapRow[12]
+      valueDelta:   snapRow[12],
+      pctGrowth:    snapRow[13],
+      fireProgress: snapRow[14],
+      autoInsight:  snapRow[15],
+      manualNotes:  snapRow[16]
     };
   }
 

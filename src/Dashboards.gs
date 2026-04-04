@@ -137,29 +137,34 @@ function updateVisualDashboards() {
 
     uiSheet.insertChart(comboChart);
 
-    // C. Liquid vs Locked (Stacked Column Chart)
-    const stackedBar = uiSheet.newChart()
-      .asColumnChart()
+    // C. Asset Class Evolution (Stacked Area Chart)
+    const stackedArea = uiSheet.newChart()
+      .asAreaChart()
       .addRange(snapSheet.getRange(1, 1, lastSnapRow, 1)) // X: Dates
-      .addRange(snapSheet.getRange(1, 3, lastSnapRow, 1)) // Y1: Liquid
-      .addRange(snapSheet.getRange(1, 4, lastSnapRow, 1)) // Y2: Locked
+      .addRange(snapSheet.getRange(1, 9, lastSnapRow, 1)) // Cash
+      .addRange(snapSheet.getRange(1, 10, lastSnapRow, 1)) // Brokerage
+      .addRange(snapSheet.getRange(1, 11, lastSnapRow, 1)) // Retirement
+      .addRange(snapSheet.getRange(1, 8, lastSnapRow, 1))  // Real Estate
+      .addRange(snapSheet.getRange(1, 12, lastSnapRow, 1)) // Liabilities
       .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
-      .setOption('title', 'Liquidity Profile: Liquid vs. Locked Assets')
+      .setOption('title', 'Historical Asset Class Evolution')
       .setOption('isStacked', true)
-      .setOption('colors', THEME.charts.stacked) 
-      .setOption('dataOpacity', 0.85)
+      .setOption('colors', [THEME.assetRows['Cash'], THEME.assetRows['Brokerage'], THEME.assetRows['Retirement'], THEME.assetRows['Real Estate'], THEME.assetRows['Liability']]) 
       .setOption('backgroundColor', { fill: 'transparent' })
       .setOption('chartArea', {left: '10%', top: '15%', width: '85%', height: '70%'})
       .setOption('vAxis', { gridlines: {color: THEME.charts.gridlines}, textStyle: {color: THEME.charts.axisText}, format: '$#,###' })
       .setOption('legend', {position: 'top', alignment: 'end', textStyle: {fontSize: 12, color: THEME.charts.legendText}})
       .setOption('series', {
-        0: {label: 'Liquid Assets'},
-        1: {label: 'Locked Assets'}
+        0: {label: 'Cash (USD)'},
+        1: {label: 'Brokerage (USD)'},
+        2: {label: 'Retirement (USD)'},
+        3: {label: 'Real Estate (USD)'},
+        4: {label: 'Liabilities (USD)'}
       })
       .setPosition(22, 2, 0, 0) // Row 22, Col B (Below the others)
       .build();
 
-    uiSheet.insertChart(stackedBar);
+    uiSheet.insertChart(stackedArea);
   }
 
   // D. Portfolio X-Ray (Donut Chart)

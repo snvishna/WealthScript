@@ -328,16 +328,18 @@ function buildSnapshotTab() {
 
   const headers = [
     "Date", "Net (USD)", "Liquid (USD)", "Locked (USD)", "Gross (USD)", 
-    "Net (CAD)", "Net (INR)", "Total RE (USD)", "Value Δ (USD)", "% Growth", "FIRE Progress", "Auto-Insights", "Manual Notes"
+    "Net (CAD)", "Net (INR)", "Total RE (USD)", 
+    "Cash (USD)", "Brokerage (USD)", "Retirement (USD)", "Liabilities (USD)", 
+    "Value Δ (USD)", "% Growth", "FIRE Progress", "Auto-Insights", "Manual Notes"
   ];
   sheet.setHiddenGridlines(true);
   
-  sheet.getRange("A1:M1").setValues([headers]).setBackground(THEME.headerBg).setFontColor(THEME.headerText).setFontWeight("bold");
-  sheet.getRange("A2:M100").applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, false, false);
+  sheet.getRange("A1:Q1").setValues([headers]).setBackground(THEME.headerBg).setFontColor(THEME.headerText).setFontWeight("bold");
+  sheet.getRange("A2:Q100").applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, false, false);
   
   sheet.setColumnWidth(1, 150); 
-  sheet.setColumnWidth(12, 350); 
-  sheet.setColumnWidth(13, 200); 
+  sheet.setColumnWidth(16, 350); 
+  sheet.setColumnWidth(17, 200); 
   sheet.setFrozenRows(1);
 }
 

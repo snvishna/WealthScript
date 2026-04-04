@@ -27,18 +27,18 @@ function _buildEnrichedBackup(ss) {
   // Latest snapshot row (if exists)
   let latestSnapshot = null;
   if (snapSheet && snapSheet.getLastRow() > 1) {
-    const snapRow = snapSheet.getRange(2, 1, 1, 13).getValues()[0];
+    const snapRow = snapSheet.getRange(2, 1, 1, 17).getValues()[0];
     latestSnapshot = {
       date:         snapRow[0],
       netUSD:       snapRow[1],
       liquidUSD:    snapRow[2],
       lockedUSD:    snapRow[3],
       grossUSD:     snapRow[4],
-      valueDelta:   snapRow[8],
-      pctGrowth:    snapRow[9],
-      fireProgress: snapRow[10],
-      autoInsight:  snapRow[11],
-      manualNotes:  snapRow[12]
+      valueDelta:   snapRow[12],
+      pctGrowth:    snapRow[13],
+      fireProgress: snapRow[14],
+      autoInsight:  snapRow[15],
+      manualNotes:  snapRow[16]
     };
   }
 

@@ -217,10 +217,13 @@ function _e2e_snapshotTab(testSs) {
   const s = testSs.getSheetByName("Snapshots");
   Assert.isTrue(s !== null, "E2E-SNAPSHOT: Tab exists");
 
-  const headers = s.getRange("A1:M1").getValues()[0];
-  const expectedHeaders = ["Date", "Net Worth (USD)", "Liquid Worth (USD)", "Locked Worth (USD)",
-    "Gross Worth (USD)", "Net Worth (CAD)", "Net Worth (INR)", "Real Estate Net (USD)",
-    "Value Delta ($)", "Growth (%)", "FIRE Progress", "Auto Insight", "Manual Notes"];
+  const headers = s.getRange("A1:Q1").getValues()[0];
+  const expectedHeaders = [
+    "Date", "Net (USD)", "Liquid (USD)", "Locked (USD)", "Gross (USD)", 
+    "Net (CAD)", "Net (INR)", "Total RE (USD)", 
+    "Cash (USD)", "Brokerage (USD)", "Retirement (USD)", "Liabilities (USD)", 
+    "Value Δ (USD)", "% Growth", "FIRE Progress", "Auto-Insights", "Manual Notes"
+  ];
   for (let i = 0; i < expectedHeaders.length; i++) {
     Assert.equal(headers[i], expectedHeaders[i],
       `E2E-SNAPSHOT: Header col ${i+1} = "${expectedHeaders[i]}"`);
