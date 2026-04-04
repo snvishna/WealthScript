@@ -19,6 +19,7 @@ function captureSnapshot(ss_inject, silent = false) {
   const dataRange = mainSheet.getRange("A7:J80").getValues(); 
   
   let liquidUSD = 0, lockedUSD = 0, totalReUSD = 0;
+  let cashUSD = 0, brokerageUSD = 0, retirementUSD = 0, liabilityUSD = 0;
 
   for (let i = 0; i < dataRange.length; i++) {
     let assetClass = String(dataRange[i][1]);
@@ -31,7 +32,12 @@ function captureSnapshot(ss_inject, silent = false) {
       } else {
         lockedUSD += netVal; 
       }
-      if (assetClass === "Real Estate") totalReUSD += netVal;
+      
+      if (assetClass === "Cash") cashUSD += netVal;
+      else if (assetClass === "Brokerage") brokerageUSD += netVal;
+      else if (assetClass === "Retirement") retirementUSD += netVal;
+      else if (assetClass === "Real Estate") totalReUSD += netVal;
+      else if (assetClass === "Liability") liabilityUSD += netVal;
     }
   }
 
@@ -52,12 +58,17 @@ function captureSnapshot(ss_inject, silent = false) {
   }
 
   logSheet.insertRowBefore(2);
-  const rowData = [new Date(), netUSD, liquidUSD, lockedUSD, grossUSD, netCAD, netINR, totalReUSD, dollarDelta, pctGrowth, fireProgress, autoInsight, ""];
+  const rowData = [
+    new Date(), netUSD, liquidUSD, lockedUSD, grossUSD, 
+    netCAD, netINR, totalReUSD, 
+    cashUSD, brokerageUSD, retirementUSD, liabilityUSD,
+    dollarDelta, pctGrowth, fireProgress, autoInsight, ""
+  ];
   logSheet.getRange(2, 1, 1, rowData.length).setValues([rowData]);
 
-  logSheet.getRange(2, 2, 1, 7).setNumberFormat("$#,##0.00"); 
-  logSheet.getRange(2, 9).setNumberFormat("[Color10]+$#,##0.00;[Color3]-$#,##0.00"); 
-  logSheet.getRange(2, 10).setNumberFormat("[Color10]+0.00%;[Color3]-0.00%"); 
+  logSheet.getRange(2, 2, 1, 11).setNumberFormat("$#,##0.00"); 
+  logSheet.getRange(2, 13).setNumberFormat("[Color10]+$#,##0.00;[Color3]-$#,##0.00"); 
+  logSheet.getRange(2, 14).setNumberFormat("[Color10]+0.00%;[Color3]-0.00%"); 
   logSheet.getRange(2, 11).setNumberFormat("0.00%"); 
   
   // --- Cloud Backup Chain with Transparent Status ---

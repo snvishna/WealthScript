@@ -535,7 +535,7 @@ function buildSettingsTab(ss_inject) {
  * @returns {string} The formula string
  */
 function _buildBrokerageFormula(rowNum) {
-  return `=SUMPRODUCT(('Brokerage Holdings'!$A$2:$A$200=A${rowNum})*N('Brokerage Holdings'!$E$2:$E$200))`;
+  return `=SUMPRODUCT(('Brokerage Holdings'!$A$2:$A$200=A${rowNum})*N('Brokerage Holdings'!$F$2:$F$200))`;
 }
 
 function buildPortfolioTracker(ss_inject) {
@@ -727,29 +727,29 @@ function buildHoldingsTab(ss_inject) {
 
   sheet.setHiddenGridlines(true);
   
-  const headers = ["Account Name", "Ticker Symbol", "Quantity", "Live Price", "Total Value"];
+  const headers = ["Account Name", "Asset Category", "Ticker Symbol", "Quantity", "Live Price", "Total Value"];
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setBackground(THEME.headerBg).setFontColor(THEME.headerText).setFontWeight("bold");
 
   const sampleData = [
-    ["Taxable Brokerage", "VTI", 150],
-    ["Taxable Brokerage", "AAPL", 50],
-    ["401k / RRSP", "QQQ", 200]
+    ["Taxable Brokerage", "US Equity", "VTI", 150],
+    ["Taxable Brokerage", "Individual Stocks", "AAPL", 50],
+    ["401k / RRSP", "Technology", "QQQ", 200]
   ];
-  sheet.getRange(2, 1, sampleData.length, 3).setValues(sampleData);
+  sheet.getRange(2, 1, sampleData.length, 4).setValues(sampleData);
 
   const numRows = 99;
   const formulas = [];
   for (let i = 0; i < numRows; i++) {
     let rowNum = i + 2;
     formulas.push([
-      `=IF(ISBLANK(B${rowNum}), "", GOOGLEFINANCE(B${rowNum}, "price"))`, 
-      `=IF(AND(ISNUMBER(C${rowNum}), ISNUMBER(D${rowNum})), C${rowNum} * D${rowNum}, "")` 
+      `=IF(ISBLANK(C${rowNum}), "", GOOGLEFINANCE(C${rowNum}, "price"))`, 
+      `=IF(AND(ISNUMBER(D${rowNum}), ISNUMBER(E${rowNum})), D${rowNum} * E${rowNum}, "")` 
     ]);
   }
-  sheet.getRange(2, 4, numRows, 1).setFormulas(formulas.map(row => [row[0]]));
-  sheet.getRange(2, 5, numRows, 1).setFormulas(formulas.map(row => [row[1]]));
+  sheet.getRange(2, 5, numRows, 1).setFormulas(formulas.map(row => [row[0]]));
+  sheet.getRange(2, 6, numRows, 1).setFormulas(formulas.map(row => [row[1]]));
 
-  sheet.getRange("D2:E100").setNumberFormat("$#,##0.00");
+  sheet.getRange("E2:F100").setNumberFormat("$#,##0.00");
   sheet.setFrozenRows(1);
   sheet.autoResizeColumns(1, headers.length);
   sheet.getRange(2, 1, numRows, headers.length).applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, false, false);
@@ -766,16 +766,18 @@ function buildSnapshotTab() {
 
   const headers = [
     "Date", "Net (USD)", "Liquid (USD)", "Locked (USD)", "Gross (USD)", 
-    "Net (CAD)", "Net (INR)", "Total RE (USD)", "Value Δ (USD)", "% Growth", "FIRE Progress", "Auto-Insights", "Manual Notes"
+    "Net (CAD)", "Net (INR)", "Total RE (USD)", 
+    "Cash (USD)", "Brokerage (USD)", "Retirement (USD)", "Liabilities (USD)", 
+    "Value Δ (USD)", "% Growth", "FIRE Progress", "Auto-Insights", "Manual Notes"
   ];
   sheet.setHiddenGridlines(true);
   
-  sheet.getRange("A1:M1").setValues([headers]).setBackground(THEME.headerBg).setFontColor(THEME.headerText).setFontWeight("bold");
-  sheet.getRange("A2:M100").applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, false, false);
+  sheet.getRange("A1:Q1").setValues([headers]).setBackground(THEME.headerBg).setFontColor(THEME.headerText).setFontWeight("bold");
+  sheet.getRange("A2:Q100").applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, false, false);
   
   sheet.setColumnWidth(1, 150); 
-  sheet.setColumnWidth(12, 350); 
-  sheet.setColumnWidth(13, 200); 
+  sheet.setColumnWidth(16, 350); 
+  sheet.setColumnWidth(17, 200); 
   sheet.setFrozenRows(1);
 }
 
@@ -886,27 +888,6 @@ function updateVisualDashboards() {
     dataSheet.clear();
   }
 
-  // 3. Aggregate Live Asset Allocation
-  const dataRange = ledgerSheet.getRange("A7:J60").getValues();
-  const allocMap = {};
-  
-  for (let i = 0; i < dataRange.length; i++) {
-    let assetClass = String(dataRange[i][1]);
-    let netVal = Number(dataRange[i][8]); 
-    let status = String(dataRange[i][9]); 
-    
-    if (status === "Active" && !isNaN(netVal) && netVal > 0 && assetClass !== "") { 
-      if (!allocMap[assetClass]) allocMap[assetClass] = 0;
-      allocMap[assetClass] += netVal;
-    }
-  }
-
-  const pieData = [["Asset Class", "Net Value"]];
-  for (const [key, value] of Object.entries(allocMap)) {
-    pieData.push([key, value]);
-  }
-  dataSheet.getRange(1, 1, pieData.length, 2).setValues(pieData);
-
   // --- CHART BUILDERS ---
 
   // A. Asset Allocation (Modern Minimalist Donut)
@@ -918,59 +899,148 @@ function updateVisualDashboards() {
       .addRange(ledgerSheet.getRange(7, 9, lastAssetRow - 6, 1)) // Net Worth (USD)
       .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_ROWS)
       .setOption('title', 'Asset Allocation Framework')
-      .setOption('pieHole', 0.45)
+      .setOption('pieHole', 0.55)
       .setOption('colors', THEME.charts.donut)
       .setOption('pieSliceBorderColor', "transparent")
       .setOption('backgroundColor', { fill: 'transparent' })
-      .setOption('chartArea', {left: '10%', top: '15%', width: '80%', height: '70%'})
-      .setOption('legend', {position: 'labeled', textStyle: {fontSize: 12, color: THEME.charts.legendText}})
-      .setOption('pieSliceText', 'percentage')
-      .setOption('pieSliceTextStyle', {color: 'white', fontSize: 11})
+      .setOption('chartArea', {left: '5%', top: '15%', width: '90%', height: '80%'})
+      .setOption('legend', {position: 'right', textStyle: {fontSize: 12, color: THEME.charts.legendText}})
+      .setOption('pieSliceText', 'none')
       .setPosition(4, 2, 0, 0) // Row 4, Col B
       .build();
 
     uiSheet.insertChart(pieChart);
   }
 
-  // B. Historical Net Worth (Smooth Area Chart)
+  // B. Time-to-FIRE Forecast (Combo Chart: Actuals + CAGR Projection)
   const lastSnapRow = snapSheet.getLastRow();
   if (lastSnapRow > 1) {
-    const areaChart = uiSheet.newChart()
-      .asAreaChart()
-      .addRange(snapSheet.getRange(1, 1, lastSnapRow, 1)) // X: Dates
-      .addRange(snapSheet.getRange(1, 2, lastSnapRow, 1)) // Y1: Net USD
+    const snapData = snapSheet.getRange(2, 1, lastSnapRow - 1, 2).getValues();
+    snapData.reverse(); // Snapshots are push-to-top, reverse for chronological order
+
+    const forecastData = [["Date", "Actual Net Worth", "Projected Timeline"]];
+    const targetUSD = DASHBOARD_CONFIG.fireTargetUSD || 3000000;
+
+    if (snapData.length > 1) {
+      const firstRow = snapData[0];
+      const lastRow = snapData[snapData.length - 1];
+      const firstDate = new Date(firstRow[0]);
+      const lastDate = new Date(lastRow[0]);
+      const firstNet = Number(firstRow[1]);
+      const lastNet = Number(lastRow[1]);
+
+      for (let i = 0; i < snapData.length; i++) {
+        forecastData.push([snapData[i][0], snapData[i][1], null]);
+      }
+
+      const yearsElapsed = (lastDate - firstDate) / (1000 * 60 * 60 * 24 * 365.25);
+      
+      // Compute CAGR and project if there is actual positive growth and haven't hit target yet
+      if (yearsElapsed >= 0 && firstNet > 0 && lastNet > firstNet && lastNet < targetUSD) {
+        // Prevent Divide by Zero parsing if yearsElapsed is mathematically 0 (same day snapshot)
+        const safeYears = Math.max(yearsElapsed, 0.25); 
+        const cagr = Math.pow(lastNet / firstNet, 1 / safeYears) - 1;
+
+        if (cagr > 0) {
+          // Join the actual line to the projected line visually
+          forecastData[forecastData.length - 1][2] = lastNet;
+
+          let projectedNet = lastNet;
+          let projectedDate = new Date(lastDate);
+          let safetyStops = 0;
+
+          // Steps by quarter up to 30 years (120 quarters)
+          while (projectedNet < targetUSD && safetyStops < 120) {
+            projectedDate.setMonth(projectedDate.getMonth() + 3);
+            projectedNet = projectedNet * Math.pow(1 + cagr, 0.25);
+
+            if (projectedNet > targetUSD) projectedNet = targetUSD;
+            forecastData.push([new Date(projectedDate), null, projectedNet]);
+            safetyStops++;
+          }
+        }
+      }
+    } else {
+      forecastData.push([snapData[0][0], snapData[0][1], null]);
+    }
+
+    dataSheet.getRange(1, 1, forecastData.length, 3).setValues(forecastData);
+
+    const comboChart = uiSheet.newChart()
+      .asComboChart()
+      .addRange(dataSheet.getRange(1, 1, forecastData.length, 1)) // X: Dates
+      .addRange(dataSheet.getRange(1, 2, forecastData.length, 1)) // Y1: Actuals
+      .addRange(dataSheet.getRange(1, 3, forecastData.length, 1)) // Y2: Forecast
       .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
-      .setOption('title', 'Net Worth Trajectory (USD)')
-      .setOption('colors', THEME.charts.area) 
+      .setOption('title', 'Time-to-FIRE Trajectory (USD)')
       .setOption('backgroundColor', { fill: 'transparent' })
-      .setOption('curveType', 'function') 
+      .setOption('seriesType', 'area')
+      .setOption('series', {
+        0: {type: 'area', color: THEME.charts.area[0], pointSize: 6, lineWidth: 3, label: 'Actual Net Worth'},
+        1: {type: 'line', color: THEME.charts.stacked[0], pointSize: 0, lineWidth: 3, lineDashStyle: [4, 4], label: 'Projected FIRE Timeline (CAGR)'}
+      })
       .setOption('chartArea', {left: '15%', top: '15%', width: '80%', height: '70%'})
-      .setOption('vAxis', { gridlines: {color: THEME.charts.gridlines}, textStyle: {color: THEME.charts.axisText}, format: 'short' })
+      .setOption('vAxis', { gridlines: {color: THEME.charts.gridlines}, textStyle: {color: THEME.charts.axisText}, format: '$#,###' })
       .setOption('hAxis', { textStyle: {color: THEME.charts.axisText}, format: 'MMM yyyy' })
-      .setOption('legend', {position: 'none'}) 
-      .setPosition(4, 7, 0, 0) // Row 4, Col G (Next to Donut)
+      .setOption('legend', {position: 'top', alignment: 'end', textStyle: {fontSize: 12, color: THEME.charts.legendText}})
+      .setPosition(4, 7, 0, 0) // Row 4, Col G
       .build();
 
-    uiSheet.insertChart(areaChart);
+    uiSheet.insertChart(comboChart);
 
-    // C. Liquid vs Locked (Stacked Column Chart)
-    const stackedBar = uiSheet.newChart()
-      .asColumnChart()
+    // C. Asset Class Evolution (Stacked Area Chart)
+    const stackedArea = uiSheet.newChart()
+      .asAreaChart()
       .addRange(snapSheet.getRange(1, 1, lastSnapRow, 1)) // X: Dates
-      .addRange(snapSheet.getRange(1, 3, lastSnapRow, 1)) // Y1: Liquid
-      .addRange(snapSheet.getRange(1, 4, lastSnapRow, 1)) // Y2: Locked
+      .addRange(snapSheet.getRange(1, 9, lastSnapRow, 1)) // Cash
+      .addRange(snapSheet.getRange(1, 10, lastSnapRow, 1)) // Brokerage
+      .addRange(snapSheet.getRange(1, 11, lastSnapRow, 1)) // Retirement
+      .addRange(snapSheet.getRange(1, 8, lastSnapRow, 1))  // Real Estate
+      .addRange(snapSheet.getRange(1, 12, lastSnapRow, 1)) // Liabilities
       .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
-      .setOption('title', 'Liquidity Profile: Liquid vs. Locked Assets')
+      .setOption('title', 'Historical Asset Class Evolution')
       .setOption('isStacked', true)
-      .setOption('colors', THEME.charts.stacked) 
+      .setOption('colors', [THEME.assetRows['Cash'], THEME.assetRows['Brokerage'], THEME.assetRows['Retirement'], THEME.assetRows['Real Estate'], THEME.assetRows['Liability']]) 
       .setOption('backgroundColor', { fill: 'transparent' })
       .setOption('chartArea', {left: '10%', top: '15%', width: '85%', height: '70%'})
-      .setOption('vAxis', { gridlines: {color: THEME.charts.gridlines}, textStyle: {color: THEME.charts.axisText}, format: 'short' })
+      .setOption('vAxis', { gridlines: {color: THEME.charts.gridlines}, textStyle: {color: THEME.charts.axisText}, format: '$#,###' })
       .setOption('legend', {position: 'top', alignment: 'end', textStyle: {fontSize: 12, color: THEME.charts.legendText}})
+      .setOption('series', {
+        0: {label: 'Cash (USD)'},
+        1: {label: 'Brokerage (USD)'},
+        2: {label: 'Retirement (USD)'},
+        3: {label: 'Real Estate (USD)'},
+        4: {label: 'Liabilities (USD)'}
+      })
       .setPosition(22, 2, 0, 0) // Row 22, Col B (Below the others)
       .build();
 
-    uiSheet.insertChart(stackedBar);
+    uiSheet.insertChart(stackedArea);
+  }
+
+  // D. Portfolio X-Ray (Donut Chart)
+  const holdingsSheet = ss.getSheetByName("Brokerage Holdings");
+  if (holdingsSheet) {
+    const lastXrayRow = holdingsSheet.getLastRow();
+    if (lastXrayRow > 1) {
+      const xrayChart = uiSheet.newChart()
+        .asPieChart()
+        .addRange(holdingsSheet.getRange(2, 2, lastXrayRow - 1, 1)) // Asset Category
+        .addRange(holdingsSheet.getRange(2, 6, lastXrayRow - 1, 1)) // Total Value
+        .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_ROWS)
+        .setOption('title', 'Portfolio Exposure X-Ray')
+        .setOption('pieHole', 0.55)
+        .setOption('colors', THEME.charts.donut)
+        .setOption('pieSliceBorderColor', "transparent")
+        .setOption('backgroundColor', { fill: 'transparent' })
+        .setOption('chartArea', {left: '5%', top: '15%', width: '90%', height: '80%'})
+        .setOption('legend', {position: 'right', textStyle: {fontSize: 12, color: THEME.charts.legendText}})
+        .setOption('pieSliceText', 'none')
+        .setPosition(22, 7, 0, 0) // Row 22, Col G (Next to Liquid vs Locked)
+        .build();
+
+      uiSheet.insertChart(xrayChart);
+    }
   }
 }
 /**
@@ -994,6 +1064,7 @@ function captureSnapshot(ss_inject, silent = false) {
   const dataRange = mainSheet.getRange("A7:J80").getValues(); 
   
   let liquidUSD = 0, lockedUSD = 0, totalReUSD = 0;
+  let cashUSD = 0, brokerageUSD = 0, retirementUSD = 0, liabilityUSD = 0;
 
   for (let i = 0; i < dataRange.length; i++) {
     let assetClass = String(dataRange[i][1]);
@@ -1006,7 +1077,12 @@ function captureSnapshot(ss_inject, silent = false) {
       } else {
         lockedUSD += netVal; 
       }
-      if (assetClass === "Real Estate") totalReUSD += netVal;
+      
+      if (assetClass === "Cash") cashUSD += netVal;
+      else if (assetClass === "Brokerage") brokerageUSD += netVal;
+      else if (assetClass === "Retirement") retirementUSD += netVal;
+      else if (assetClass === "Real Estate") totalReUSD += netVal;
+      else if (assetClass === "Liability") liabilityUSD += netVal;
     }
   }
 
@@ -1027,12 +1103,17 @@ function captureSnapshot(ss_inject, silent = false) {
   }
 
   logSheet.insertRowBefore(2);
-  const rowData = [new Date(), netUSD, liquidUSD, lockedUSD, grossUSD, netCAD, netINR, totalReUSD, dollarDelta, pctGrowth, fireProgress, autoInsight, ""];
+  const rowData = [
+    new Date(), netUSD, liquidUSD, lockedUSD, grossUSD, 
+    netCAD, netINR, totalReUSD, 
+    cashUSD, brokerageUSD, retirementUSD, liabilityUSD,
+    dollarDelta, pctGrowth, fireProgress, autoInsight, ""
+  ];
   logSheet.getRange(2, 1, 1, rowData.length).setValues([rowData]);
 
-  logSheet.getRange(2, 2, 1, 7).setNumberFormat("$#,##0.00"); 
-  logSheet.getRange(2, 9).setNumberFormat("[Color10]+$#,##0.00;[Color3]-$#,##0.00"); 
-  logSheet.getRange(2, 10).setNumberFormat("[Color10]+0.00%;[Color3]-0.00%"); 
+  logSheet.getRange(2, 2, 1, 11).setNumberFormat("$#,##0.00"); 
+  logSheet.getRange(2, 13).setNumberFormat("[Color10]+$#,##0.00;[Color3]-$#,##0.00"); 
+  logSheet.getRange(2, 14).setNumberFormat("[Color10]+0.00%;[Color3]-0.00%"); 
   logSheet.getRange(2, 11).setNumberFormat("0.00%"); 
   
   // --- Cloud Backup Chain with Transparent Status ---
@@ -1097,18 +1178,18 @@ function _buildEnrichedBackup(ss) {
   // Latest snapshot row (if exists)
   let latestSnapshot = null;
   if (snapSheet && snapSheet.getLastRow() > 1) {
-    const snapRow = snapSheet.getRange(2, 1, 1, 13).getValues()[0];
+    const snapRow = snapSheet.getRange(2, 1, 1, 17).getValues()[0];
     latestSnapshot = {
       date:         snapRow[0],
       netUSD:       snapRow[1],
       liquidUSD:    snapRow[2],
       lockedUSD:    snapRow[3],
       grossUSD:     snapRow[4],
-      valueDelta:   snapRow[8],
-      pctGrowth:    snapRow[9],
-      fireProgress: snapRow[10],
-      autoInsight:  snapRow[11],
-      manualNotes:  snapRow[12]
+      valueDelta:   snapRow[12],
+      pctGrowth:    snapRow[13],
+      fireProgress: snapRow[14],
+      autoInsight:  snapRow[15],
+      manualNotes:  snapRow[16]
     };
   }
 
