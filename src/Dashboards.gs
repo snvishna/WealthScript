@@ -37,27 +37,6 @@ function updateVisualDashboards() {
     dataSheet.clear();
   }
 
-  // 3. Aggregate Live Asset Allocation
-  const dataRange = ledgerSheet.getRange("A7:J60").getValues();
-  const allocMap = {};
-  
-  for (let i = 0; i < dataRange.length; i++) {
-    let assetClass = String(dataRange[i][1]);
-    let netVal = Number(dataRange[i][8]); 
-    let status = String(dataRange[i][9]); 
-    
-    if (status === "Active" && !isNaN(netVal) && netVal > 0 && assetClass !== "") { 
-      if (!allocMap[assetClass]) allocMap[assetClass] = 0;
-      allocMap[assetClass] += netVal;
-    }
-  }
-
-  const pieData = [["Asset Class", "Net Value"]];
-  for (const [key, value] of Object.entries(allocMap)) {
-    pieData.push([key, value]);
-  }
-  dataSheet.getRange(1, 1, pieData.length, 2).setValues(pieData);
-
   // --- CHART BUILDERS ---
 
   // A. Asset Allocation (Modern Minimalist Donut)
@@ -132,5 +111,30 @@ function updateVisualDashboards() {
       .build();
 
     uiSheet.insertChart(stackedBar);
+  }
+
+  // D. Portfolio X-Ray (Donut Chart)
+  const holdingsSheet = ss.getSheetByName("Brokerage Holdings");
+  if (holdingsSheet) {
+    const lastXrayRow = holdingsSheet.getLastRow();
+    if (lastXrayRow > 1) {
+      const xrayChart = uiSheet.newChart()
+        .asPieChart()
+        .addRange(holdingsSheet.getRange(2, 2, lastXrayRow - 1, 1)) // Asset Category
+        .addRange(holdingsSheet.getRange(2, 6, lastXrayRow - 1, 1)) // Total Value
+        .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_ROWS)
+        .setOption('title', 'Portfolio Exposure X-Ray')
+        .setOption('pieHole', 0.55)
+        .setOption('colors', THEME.charts.donut)
+        .setOption('pieSliceBorderColor', "transparent")
+        .setOption('backgroundColor', { fill: 'transparent' })
+        .setOption('chartArea', {left: '5%', top: '15%', width: '90%', height: '80%'})
+        .setOption('legend', {position: 'right', textStyle: {fontSize: 12, color: THEME.charts.legendText}})
+        .setOption('pieSliceText', 'none')
+        .setPosition(22, 7, 0, 0) // Row 22, Col G (Next to Liquid vs Locked)
+        .build();
+
+      uiSheet.insertChart(xrayChart);
+    }
   }
 }

@@ -97,7 +97,7 @@ function buildSettingsTab(ss_inject) {
  * @returns {string} The formula string
  */
 function _buildBrokerageFormula(rowNum) {
-  return `=SUMPRODUCT(('Brokerage Holdings'!$A$2:$A$200=A${rowNum})*N('Brokerage Holdings'!$E$2:$E$200))`;
+  return `=SUMPRODUCT(('Brokerage Holdings'!$A$2:$A$200=A${rowNum})*N('Brokerage Holdings'!$F$2:$F$200))`;
 }
 
 function buildPortfolioTracker(ss_inject) {
@@ -289,29 +289,29 @@ function buildHoldingsTab(ss_inject) {
 
   sheet.setHiddenGridlines(true);
   
-  const headers = ["Account Name", "Ticker Symbol", "Quantity", "Live Price", "Total Value"];
+  const headers = ["Account Name", "Asset Category", "Ticker Symbol", "Quantity", "Live Price", "Total Value"];
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setBackground(THEME.headerBg).setFontColor(THEME.headerText).setFontWeight("bold");
 
   const sampleData = [
-    ["Taxable Brokerage", "VTI", 150],
-    ["Taxable Brokerage", "AAPL", 50],
-    ["401k / RRSP", "QQQ", 200]
+    ["Taxable Brokerage", "US Equity", "VTI", 150],
+    ["Taxable Brokerage", "Individual Stocks", "AAPL", 50],
+    ["401k / RRSP", "Technology", "QQQ", 200]
   ];
-  sheet.getRange(2, 1, sampleData.length, 3).setValues(sampleData);
+  sheet.getRange(2, 1, sampleData.length, 4).setValues(sampleData);
 
   const numRows = 99;
   const formulas = [];
   for (let i = 0; i < numRows; i++) {
     let rowNum = i + 2;
     formulas.push([
-      `=IF(ISBLANK(B${rowNum}), "", GOOGLEFINANCE(B${rowNum}, "price"))`, 
-      `=IF(AND(ISNUMBER(C${rowNum}), ISNUMBER(D${rowNum})), C${rowNum} * D${rowNum}, "")` 
+      `=IF(ISBLANK(C${rowNum}), "", GOOGLEFINANCE(C${rowNum}, "price"))`, 
+      `=IF(AND(ISNUMBER(D${rowNum}), ISNUMBER(E${rowNum})), D${rowNum} * E${rowNum}, "")` 
     ]);
   }
-  sheet.getRange(2, 4, numRows, 1).setFormulas(formulas.map(row => [row[0]]));
-  sheet.getRange(2, 5, numRows, 1).setFormulas(formulas.map(row => [row[1]]));
+  sheet.getRange(2, 5, numRows, 1).setFormulas(formulas.map(row => [row[0]]));
+  sheet.getRange(2, 6, numRows, 1).setFormulas(formulas.map(row => [row[1]]));
 
-  sheet.getRange("D2:E100").setNumberFormat("$#,##0.00");
+  sheet.getRange("E2:F100").setNumberFormat("$#,##0.00");
   sheet.setFrozenRows(1);
   sheet.autoResizeColumns(1, headers.length);
   sheet.getRange(2, 1, numRows, headers.length).applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, false, false);

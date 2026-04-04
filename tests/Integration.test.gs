@@ -160,21 +160,22 @@ function _e2e_brokerageHoldings(testSs) {
   const s = testSs.getSheetByName("Brokerage Holdings");
   Assert.isTrue(s !== null, "E2E-HOLDINGS: Tab exists");
 
-  const headers = s.getRange("A1:E1").getValues()[0];
+  const headers = s.getRange("A1:F1").getValues()[0];
   Assert.equal(headers[0], "Account Name",   "E2E-HOLDINGS: Col A header = Account Name");
-  Assert.equal(headers[1], "Ticker Symbol",  "E2E-HOLDINGS: Col B header = Ticker Symbol");
-  Assert.equal(headers[2], "Quantity",       "E2E-HOLDINGS: Col C header = Quantity");
-  Assert.equal(headers[3], "Live Price",     "E2E-HOLDINGS: Col D header = Live Price");
-  Assert.equal(headers[4], "Total Value",    "E2E-HOLDINGS: Col E header = Total Value");
+  Assert.equal(headers[1], "Asset Category", "E2E-HOLDINGS: Col B header = Asset Category");
+  Assert.equal(headers[2], "Ticker Symbol",  "E2E-HOLDINGS: Col C header = Ticker Symbol");
+  Assert.equal(headers[3], "Quantity",       "E2E-HOLDINGS: Col D header = Quantity");
+  Assert.equal(headers[4], "Live Price",     "E2E-HOLDINGS: Col E header = Live Price");
+  Assert.equal(headers[5], "Total Value",    "E2E-HOLDINGS: Col F header = Total Value");
 
-  // Live Price col D should have GOOGLEFINANCE formula
-  const priceFmla = s.getRange("D2").getFormula();
+  // Live Price col E should have GOOGLEFINANCE formula
+  const priceFmla = s.getRange("E2").getFormula();
   Assert.isTrue(priceFmla.includes("GOOGLEFINANCE") || priceFmla.includes("IF"),
     "E2E-HOLDINGS: Live Price uses GOOGLEFINANCE");
 
-  // Total Value col E should be C * D
-  const totalFmla = s.getRange("E2").getFormula();
-  Assert.isTrue(totalFmla.includes("C2") && totalFmla.includes("D2"),
+  // Total Value col F should be D * E
+  const totalFmla = s.getRange("F2").getFormula();
+  Assert.isTrue(totalFmla.includes("D2") && totalFmla.includes("E2"),
     "E2E-HOLDINGS: Total Value = Quantity × Live Price");
 
   // Cross-tab: inject account name + quantity, allow GOOGLEFINANCE to resolve, assert SUMPRODUCT fires
@@ -192,11 +193,11 @@ function _e2e_brokerageHoldings(testSs) {
   Assert.isTrue(brokerageAcct !== "", "E2E-HOLDINGS: Found a Brokerage account in Dashboard to test cross-tab");
 
   // Set up Holdings row with a static price (NOT bypassing the formula chain)
-  // We inject a static price into D2 to avoid network latency in tests, but the
-  // E (Total Value) column formula =IF(ISNUMBER(C2),ISNUMBER(D2), C2*D2, "") still runs natively
+  // We inject a static price into E2 to avoid network latency in tests, but the
+  // F (Total Value) column formula =IF(AND(ISNUMBER(D2),ISNUMBER(E2)), D2*E2, "") still runs natively
   s.getRange("A2").setValue(brokerageAcct);
-  s.getRange("C2").setValue(100);
-  s.getRange("D2").setValue(250); // static price: simulates resolved GOOGLEFINANCE
+  s.getRange("D2").setValue(100); // Quantity
+  s.getRange("E2").setValue(250); // Live Price
 
   // Force the spreadsheet engine to recalculate formula chains (including SUMPRODUCT in Dashboard)
   SpreadsheetApp.flush();
