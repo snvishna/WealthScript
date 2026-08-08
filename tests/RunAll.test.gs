@@ -16,6 +16,8 @@ function runAllTests() {
   test_hasUserLedgerData();
   test_ledgerFixedFormulas();
   test_formatHealthReport();
+  test_healthReportSeparatesErrorsFromNotices();
+  test_classifyBrokerageRows();
   test_generateInsight();
   test_validatePATFormat();
   test_buildGistUrl();
