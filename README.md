@@ -22,6 +22,35 @@ A privacy-first, code-driven wealth tracker built entirely inside Google Sheets 
 * Separate tab for stock/ETF/crypto positions with live `GOOGLEFINANCE` pricing.
 * Columns: Account Name, Ticker, Quantity, Live Price, Total Value — all auto-computed.
 
+### 🔗 Broker Sync (optional)
+
+WealthScript is broker-agnostic by default — most users maintain the Brokerage
+Holdings tab by hand, and nothing here changes that. If you happen to use
+Interactive Brokers, you can connect the **Flex Web Service** to refresh one
+account's positions automatically.
+
+- **Opt-in.** The sync action only appears in the menu once you've configured a
+  provider. Users who don't connect one see a single unobtrusive
+  `🔗 Connect IBKR (optional)` entry.
+- **Scoped.** A sync owns exactly one Account Name on the Holdings tab. Rows
+  belonging to any other account are never read or written.
+- **Non-destructive.** Positions you no longer hold are zeroed and reported, not
+  deleted — a closed position is information, a missing row is an unauditable
+  gap. Options get a literal mark price (GOOGLEFINANCE cannot price OCC
+  symbols); everything else keeps its live formula so the sheet stays current
+  between syncs.
+- **Credentials never touch a cell.** The Flex token lives in
+  DocumentProperties, so it isn't visible to collaborators and doesn't ride
+  along into the Gist/Drive backups.
+
+Setup: **WealthScript > 🔗 Connect IBKR (optional)**. You'll need a Flex Query ID
+and a Flex Web Service token from Client Portal. Set the token to the longest
+available expiry — the default is six hours, which will break scheduled syncs —
+and leave the IP restriction blank, since Google's servers don't have a fixed IP.
+
+Adding another broker means implementing two pure functions (a response parser
+and a position normaliser) and reusing `_planHoldingsSync()`.
+
 ### 🩺 Formula Integrity & Recovery
 
 - **Damage detection** — `captureSnapshot()` refuses to run when managed formulas have been

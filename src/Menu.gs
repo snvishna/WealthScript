@@ -21,7 +21,18 @@ function onOpen() {
       .addItem('🩺 Check Formula Health', 'checkFormulaHealth')
       .addItem('🛠 Repair Formulas', 'repairFormulas')
       .addItem('🧭 Migrate Sheet Layout', 'migrateSheetLayout')
-      .addSeparator()
+      .addSeparator();
+
+  // Broker sync is opt-in. The sync action only appears once a provider is
+  // configured, so users who track holdings by hand never see it.
+  if (isSetUp && isIbkrFlexConfigured()) {
+    menu.addItem('🔗 Sync IBKR Positions', 'syncIbkrPositions')
+        .addItem('⚙️ Reconfigure IBKR Flex', 'setupIbkrFlexWizard');
+  } else if (isSetUp) {
+    menu.addItem('🔗 Connect IBKR (optional)', 'setupIbkrFlexWizard');
+  }
+
+  menu.addSeparator()
       .addItem('🔐 Setup GitHub Backup', 'setupGistWizard')
       .addItem('📁 Setup Google Drive Backup', 'setupDriveBackup')
       .addItem('☁️ Force Cloud Backup', 'forceBackup');

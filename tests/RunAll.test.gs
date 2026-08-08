@@ -21,6 +21,13 @@ function runAllTests() {
   test_classifyAcrossAssetClasses();
   test_holdingsPriceFormulaReservesCash();
   test_headerMismatchBlocksReport();
+  test_buildOccSymbol();
+  test_normaliseFlexPosition();
+  test_normaliseFlexCash();
+  test_parseFlexEnvelope();
+  test_extractFlexElements();
+  test_planHoldingsSync();
+  test_planHoldingsSyncRunsOutOfRoom();
   test_inactiveZeroIsDormantNotSuspect();
   test_verifyHeaders();
   test_generateInsight();
