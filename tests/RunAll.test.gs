@@ -28,6 +28,12 @@ function runAllTests() {
   test_extractFlexElements();
   test_planHoldingsSync();
   test_planHoldingsSyncRunsOutOfRoom();
+  test_deriveQuantityFromPositionValue();
+  test_planBlockSyncRefusesEmptyFeed();
+  test_planBlockSyncRewritesInPlace();
+  test_planBlockSyncRefusesToStraddleAnotherAccount();
+  test_planBlockSyncFlagsLargeShrink();
+  test_headerAnnotationTolerated();
   test_inactiveZeroIsDormantNotSuspect();
   test_verifyHeaders();
   test_generateInsight();

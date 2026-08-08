@@ -122,3 +122,102 @@ function test_planHoldingsSyncRunsOutOfRoom() {
   Assert.equal(plan.additions.length, 0, 'room: nothing written when there is no free row');
   Assert.isTrue(plan.notes.join(" ").indexOf("TSLA") > -1, 'room: the skipped position is reported, not silently dropped');
 }
+
+function test_deriveQuantityFromPositionValue() {
+  // Real Flex output omits the Position attribute unless the query includes it.
+  const aapl = _normaliseFlexPosition({
+    assetCategory: "STK", symbol: "AAPL", underlyingSymbol: "AAPL",
+    multiplier: "1", markPrice: "313.33", positionValue: "12533.2"
+  });
+  Assert.equal(aapl.quantity, 40, 'derive: equity quantity recovered from positionValue');
+
+  const amzn = _normaliseFlexPosition({
+    assetCategory: "STK", symbol: "AMZN", multiplier: "1",
+    markPrice: "274.48", positionValue: "301928"
+  });
+  Assert.equal(amzn.quantity, 1100, 'derive: large share count exact, no float noise');
+
+  const opt = _normaliseFlexPosition({
+    assetCategory: "OPT", symbol: "MSFT 260918C00545000", underlyingSymbol: "MSFT",
+    multiplier: "100", strike: "545", expiry: "20260918", putCall: "C",
+    markPrice: "5.1331", positionValue: "-1026.62"
+  });
+  Assert.equal(opt.quantity, -2, 'derive: short option contracts recovered and stay negative');
+  Assert.equal(opt.ticker, "MSFT260918C00545000", 'derive: OCC symbol rebuilt without the Flex space');
+  Assert.isTrue(Math.abs(opt.price - 513.31) < 0.01, 'derive: option price per contract');
+
+  Assert.equal(_normaliseFlexPosition({
+    assetCategory: "STK", symbol: "X", markPrice: "0", positionValue: "100"
+  }), null, 'derive: zero mark cannot yield a quantity, so the row is refused not guessed');
+}
+
+function test_planBlockSyncRefusesEmptyFeed() {
+  const rows = [["IBKR", "", "AAPL", 40, "", "", ""], ["IBKR", "", "AMZN", 1100, "", "", ""]];
+  const plan = _planBlockSync(rows, [], "IBKR", 18, 100);
+  Assert.isTrue(!plan.ok, 'block: an empty feed is refused');
+  Assert.isTrue(plan.reason.indexOf("failed request") > -1, 'block: explains it is a failed feed, not an emptied account');
+}
+
+function test_planBlockSyncRewritesInPlace() {
+  const rows = [
+    ["Robinhood", "", "GME", 10, "", "", ""],   // 18 - other account, above
+    ["IBKR", "", "AAPL", 40, "", "", ""],       // 19
+    ["IBKR", "", "AMZN", 1100, "", "", ""],     // 20
+    ["IBKR", "", "DOCU", 40, "", "", ""],       // 21 - no longer held
+    ["", "", "", "", "", "", ""]                // 22 - blank
+  ];
+  const positions = [
+    { ticker: "AAPL", quantity: 40, isOption: false },
+    { ticker: "AMZN", quantity: 1100, isOption: false }
+  ];
+  const plan = _planBlockSync(rows, positions, "IBKR", 18, 100);
+
+  Assert.isTrue(plan.ok, 'block: a valid rewrite is planned');
+  Assert.equal(plan.startRow, 19, 'block: starts at the account\'s first row, not row 1');
+  Assert.equal(plan.writes.length, 2, 'block: one write per position');
+  Assert.equal(plan.clears.length, 1, 'block: the stale row is cleared');
+  Assert.equal(plan.clears[0], 21, 'block: clears the right row');
+  Assert.equal(plan.removed[0], "DOCU", 'block: names what is no longer held');
+  Assert.isTrue(!plan.writes.some(w => w.row === 18), 'block: never writes over another account');
+}
+
+function test_planBlockSyncRefusesToStraddleAnotherAccount() {
+  const rows = [
+    ["IBKR", "", "AAPL", 40, "", "", ""],       // 18
+    ["Robinhood", "", "GME", 10, "", "", ""],   // 19 - in the way
+    ["IBKR", "", "AMZN", 1100, "", "", ""]      // 20
+  ];
+  const plan = _planBlockSync(rows, [
+    { ticker: "AAPL", quantity: 40 }, { ticker: "AMZN", quantity: 1100 }, { ticker: "TSLA", quantity: 5 }
+  ], "IBKR", 18, 100);
+
+  Assert.isTrue(!plan.ok, 'straddle: refuses rather than overwrite a foreign row');
+  Assert.isTrue(plan.reason.indexOf("another account") > -1, 'straddle: says why');
+}
+
+function test_planBlockSyncFlagsLargeShrink() {
+  const rows = [];
+  for (let i = 0; i < 10; i++) rows.push(["IBKR", "", "T" + i, 1, "", "", ""]);
+  const plan = _planBlockSync(rows, [{ ticker: "T0", quantity: 1 }], "IBKR", 18, 100);
+
+  Assert.isTrue(plan.ok, 'shrink: planned, but flagged for confirmation');
+  Assert.isTrue(plan.shrinkRatio > SYNC_MAX_SHRINK, 'shrink: a 90% drop exceeds the threshold');
+  Assert.equal(plan.clears.length, 9, 'shrink: reports every row that would go');
+}
+
+function test_headerAnnotationTolerated() {
+  const withSuffix = HOLDINGS_HEADERS.slice();
+  withSuffix[5] = "Total Value";
+  Assert.isTrue(_verifyHeaders(withSuffix, HOLDINGS_HEADERS).ok,
+    'annotation: an unannotated header still matches the annotated canonical');
+
+  const annotated = HOLDINGS_HEADERS.slice();
+  annotated[3] = "Quantity (shares)";
+  Assert.isTrue(_verifyHeaders(annotated, HOLDINGS_HEADERS).ok,
+    'annotation: a user-added parenthetical is accepted');
+
+  const wrong = LEDGER_HEADERS.slice();
+  wrong[9] = "Net Worth (USD)";
+  Assert.isTrue(!_verifyHeaders(wrong, LEDGER_HEADERS).ok,
+    'annotation: a genuinely wrong header still fails');
+}
