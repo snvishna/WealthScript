@@ -137,3 +137,18 @@ function test_classifyAcrossAssetClasses() {
   Assert.equal(r.orphaned.length, 1, 'classes: orphaned holdings still detected');
   Assert.equal(r.orphaned[0].account, "TD Ameritrade", 'classes: renamed account surfaced');
 }
+
+function test_holdingsPriceFormulaReservesCash() {
+  const f = _holdingsRowFormulas(18);
+  Assert.isTrue(f.E.indexOf('UPPER(TRIM(C18))="CASH"') > -1, 'holdingsE: CASH is reserved, not sent to GOOGLEFINANCE');
+  Assert.isTrue(f.E.indexOf('IFERROR') > -1, 'holdingsE: unquotable tickers degrade to NA() rather than #REF');
+
+  const legacy = _legacyHoldingsPriceFormulas(18);
+  Assert.isTrue(legacy.indexOf('=IF(ISBLANK(C18), "", GOOGLEFINANCE(C18, "price"))') > -1,
+    'legacy: the original canonical formula is upgradeable');
+  Assert.isTrue(legacy.indexOf('=GOOGLEFINANCE("CURRENCY:CADUSD")') === -1,
+    'legacy: an FX override is NOT upgradeable and must be preserved');
+  Assert.isTrue(legacy.indexOf('=IFERROR(GOOGLEFINANCE(C18,"price"),0.0002)') === -1,
+    'legacy: a fallback-price override is NOT upgradeable and must be preserved');
+  Assert.isTrue(legacy.indexOf(f.E) === -1, 'legacy: current canonical is not listed as legacy');
+}

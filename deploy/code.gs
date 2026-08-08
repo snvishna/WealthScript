@@ -251,9 +251,32 @@ function _ledgerRowFormulas(r) {
  */
 function _holdingsRowFormulas(r) {
   return {
-    E: `=IF(ISBLANK(C${r}), "", GOOGLEFINANCE(C${r}, "price"))`,
+    // "CASH" is itself a live ticker on US markets, so a bare
+    // GOOGLEFINANCE(C, "price") on a cash row returns a real equity quote
+    // instead of erroring — silently multiplying the balance by ~87x. Reserve
+    // it explicitly. Non-USD cash rows override this cell with an FX lookup;
+    // repairFormulas() preserves such overrides.
+    E: `=IF(ISBLANK(C${r}), "", IF(UPPER(TRIM(C${r}))="CASH", 1, IFERROR(GOOGLEFINANCE(C${r}, "price"), NA())))`,
     F: `=IF(AND(ISNUMBER(D${r}), ISNUMBER(E${r})), D${r} * E${r}, "")`
   };
+}
+
+/**
+ * Previous canonical price formulas, safe for repairFormulas() to upgrade.
+ *
+ * Anything NOT in this list and not the current canonical is treated as a
+ * deliberate user override and left untouched — an FX lookup on a foreign
+ * currency row, a fallback price for an unquotable ticker, a pinned option mark.
+ *
+ * @param {number} r - 1-indexed row
+ * @returns {Array<string>}
+ */
+function _legacyHoldingsPriceFormulas(r) {
+  return [
+    `=IF(ISBLANK(C${r}), "", GOOGLEFINANCE(C${r}, "price"))`,
+    `=IF(ISBLANK(C${r}),"",GOOGLEFINANCE(C${r},"price"))`,
+    `=IFERROR(GOOGLEFINANCE(C${r},"price"),NA())`
+  ];
 }
 
 /**
@@ -2010,14 +2033,25 @@ function repairFormulas(ss_inject, silent = false) {
   for (let r = HOLDINGS_FIRST_ROW; r <= HOLDINGS_LAST_ROW; r++) {
     const f = _holdingsRowFormulas(r);
 
+    // Column E is user-overridable: FX lookups on foreign-currency cash rows,
+    // fallback prices for unquotable tickers, pinned option marks. Only fill
+    // blanks or upgrade a known previous canonical formula. NEVER replace
+    // something the user wrote — that is how an override becomes a wrong number
+    // that still looks like a working formula.
     const priceCell = holdings.getRange(r, 5);
-    const hasLiteralPrice = priceCell.getFormula() === "" && priceCell.getValue() !== "";
-    if (hasLiteralPrice) {
-      preserved++;
-      details.push(`Holdings E${r}: kept pinned price ${priceCell.getValue()}`);
-    } else if (priceCell.getFormula() !== f.E) {
+    const cur = priceCell.getFormula();
+    const isBlank = cur === "" && priceCell.getValue() === "";
+
+    if (cur === f.E) {
+      // already canonical
+    } else if (isBlank || _legacyHoldingsPriceFormulas(r).indexOf(cur) > -1) {
       priceCell.setFormula(f.E);
       restored++;
+    } else {
+      preserved++;
+      details.push(cur
+        ? `Holdings E${r}: kept custom formula ${cur}`
+        : `Holdings E${r}: kept pinned price ${priceCell.getValue()}`);
     }
 
     const totalCell = holdings.getRange(r, 6);

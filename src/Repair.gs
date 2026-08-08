@@ -304,14 +304,25 @@ function repairFormulas(ss_inject, silent = false) {
   for (let r = HOLDINGS_FIRST_ROW; r <= HOLDINGS_LAST_ROW; r++) {
     const f = _holdingsRowFormulas(r);
 
+    // Column E is user-overridable: FX lookups on foreign-currency cash rows,
+    // fallback prices for unquotable tickers, pinned option marks. Only fill
+    // blanks or upgrade a known previous canonical formula. NEVER replace
+    // something the user wrote — that is how an override becomes a wrong number
+    // that still looks like a working formula.
     const priceCell = holdings.getRange(r, 5);
-    const hasLiteralPrice = priceCell.getFormula() === "" && priceCell.getValue() !== "";
-    if (hasLiteralPrice) {
-      preserved++;
-      details.push(`Holdings E${r}: kept pinned price ${priceCell.getValue()}`);
-    } else if (priceCell.getFormula() !== f.E) {
+    const cur = priceCell.getFormula();
+    const isBlank = cur === "" && priceCell.getValue() === "";
+
+    if (cur === f.E) {
+      // already canonical
+    } else if (isBlank || _legacyHoldingsPriceFormulas(r).indexOf(cur) > -1) {
       priceCell.setFormula(f.E);
       restored++;
+    } else {
+      preserved++;
+      details.push(cur
+        ? `Holdings E${r}: kept custom formula ${cur}`
+        : `Holdings E${r}: kept pinned price ${priceCell.getValue()}`);
     }
 
     const totalCell = holdings.getRange(r, 6);
