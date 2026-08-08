@@ -22,6 +22,21 @@ A privacy-first, code-driven wealth tracker built entirely inside Google Sheets 
 * Separate tab for stock/ETF/crypto positions with live `GOOGLEFINANCE` pricing.
 * Columns: Account Name, Ticker, Quantity, Live Price, Total Value — all auto-computed.
 
+### 🩺 Formula Integrity & Recovery
+
+- **Damage detection** — `captureSnapshot()` refuses to run when managed formulas have been
+  destroyed, so a stale net worth is never frozen into your permanent history. This is the
+  safety net: the real cost of a broken formula isn't the broken cell, it's the months of
+  corrupted snapshots taken over it.
+- **Non-destructive repair** — `repairFormulas()` restores every managed formula in a live
+  sheet without clearing anything, and never overwrites a deliberately pinned literal
+  (option contract prices, manually typed balances).
+- **Idempotent migration** — `migrateSheetLayout()` applies layout changes from a new
+  release to an existing workbook. Safe to run repeatedly.
+- **Guarded destructive ops** — builders that call `sheet.clear()` are hidden from the menu
+  once the workbook holds real data, and live behind a Danger Zone submenu requiring a typed
+  `ERASE` confirmation.
+
 ### 📸 Snapshot Engine
 A single click (`WealthScript > 📸 Log Snapshot & Cloud Sync`) performs **four actions**:
 1. **Calculates** your net worth, gross worth, liquid/locked split, and real estate totals.
