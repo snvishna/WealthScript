@@ -50,27 +50,72 @@ function _countManagedFormulas(ss) {
 }
 
 /**
- * Structural check: every row whose Asset Class is "Brokerage" MUST have a
- * formula in its Current Value cell. Needs no baseline — the rule is absolute.
+ * Pure helper: classifies Brokerage rows against the Holdings tab.
  *
- * @param {SpreadsheetApp.Spreadsheet} ss
- * @returns {Array<{row: number, account: string}>} broken rows
+ * A missing formula is only damage when there is something to link TO. Tracking
+ * a brokerage as a single manually-typed number is a legitimate pattern, and
+ * injecting a SUMPRODUCT there would evaluate to 0 and silently erase the
+ * balance. So the rule is: broken only if holdings exist under that exact name.
+ *
+ * @param {Array<Array<*>>} ledgerRows - A..J values from LEDGER_FIRST_ROW
+ * @param {Object<string,number>} holdingAccounts - account name -> holdings row count
+ * @param {Array<string>} formulaCol - column E formulas, parallel to ledgerRows
+ * @returns {{broken: Array, unlinked: Array, orphaned: Array}}
  */
-function _auditBrokerageLinks(ss) {
-  const sheet = ss.getSheetByName("Dashboard & Ledger");
-  if (!sheet) return [];
+function _classifyBrokerageRows(ledgerRows, holdingAccounts, formulaCol) {
+  const broken = [], unlinked = [];
+  const seen = {};
 
-  const values = sheet.getRange(LEDGER_FIRST_ROW, 1, LEDGER_NUM_ROWS, 2).getValues();
-  const formulas = sheet.getRange(LEDGER_FIRST_ROW, 5, LEDGER_NUM_ROWS, 1).getFormulas();
+  for (let i = 0; i < ledgerRows.length; i++) {
+    if (String(ledgerRows[i][1]).trim() !== "Brokerage") continue;
 
-  const broken = [];
-  for (let i = 0; i < values.length; i++) {
-    if (String(values[i][1]).trim() !== "Brokerage") continue;
-    if (!formulas[i][0]) {
-      broken.push({ row: LEDGER_FIRST_ROW + i, account: String(values[i][0]) });
+    const account = String(ledgerRows[i][0] || "").trim();
+    const status = String(ledgerRows[i][9] || "").trim();
+    const row = LEDGER_FIRST_ROW + i;
+    seen[account] = true;
+
+    if (formulaCol[i]) continue;                       // linked — nothing to do
+
+    if (holdingAccounts[account]) {
+      broken.push({ row: row, account: account, status: status, holdings: holdingAccounts[account] });
+    } else {
+      unlinked.push({ row: row, account: account, status: status });
     }
   }
-  return broken;
+
+  // Holdings whose account name matches no Brokerage row: real money that the
+  // dashboard is not counting anywhere.
+  const orphaned = Object.keys(holdingAccounts)
+    .filter(n => !seen[n])
+    .map(n => ({ account: n, rows: holdingAccounts[n] }));
+
+  return { broken: broken, unlinked: unlinked, orphaned: orphaned };
+}
+
+/**
+ * Reads the sheet and classifies every Brokerage row.
+ * @param {SpreadsheetApp.Spreadsheet} ss
+ * @returns {{broken: Array, unlinked: Array, orphaned: Array}}
+ */
+function _auditBrokerageLinks(ss) {
+  const ledger = ss.getSheetByName("Dashboard & Ledger");
+  const holdings = ss.getSheetByName("Brokerage Holdings");
+  if (!ledger) return { broken: [], unlinked: [], orphaned: [] };
+
+  const holdingAccounts = {};
+  if (holdings) {
+    holdings.getRange(HOLDINGS_FIRST_ROW, 1, HOLDINGS_NUM_ROWS, 1).getValues()
+      .forEach(r => {
+        const n = String(r[0] || "").trim();
+        if (n) holdingAccounts[n] = (holdingAccounts[n] || 0) + 1;
+      });
+  }
+
+  const rows = ledger.getRange(LEDGER_FIRST_ROW, 1, LEDGER_NUM_ROWS, 10).getValues();
+  const formulaCol = ledger.getRange(LEDGER_FIRST_ROW, 5, LEDGER_NUM_ROWS, 1)
+    .getFormulas().map(r => r[0]);
+
+  return _classifyBrokerageRows(rows, holdingAccounts, formulaCol);
 }
 
 /**
@@ -83,7 +128,7 @@ function _auditBrokerageLinks(ss) {
 function auditFormulaHealth(ss_inject) {
   const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   const counts = _countManagedFormulas(ss);
-  const brokenLinks = _auditBrokerageLinks(ss);
+  const links = _auditBrokerageLinks(ss);
 
   const props = PropertiesService.getDocumentProperties();
   const raw = props.getProperty(INTEGRITY_PROP_KEY);
@@ -93,9 +138,13 @@ function auditFormulaHealth(ss_inject) {
   const diff = _diffFormulaCounts(counts, baseline);
 
   return {
-    healthy: diff.ok && brokenLinks.length === 0,
+    // Only genuine damage blocks a snapshot. Unlinked and orphaned accounts are
+    // reported for review but may well be intentional.
+    healthy: diff.ok && links.broken.length === 0,
     regressions: diff.regressions,
-    brokenLinks: brokenLinks,
+    brokenLinks: links.broken,
+    unlinked: links.unlinked,
+    orphaned: links.orphaned,
     counts: counts,
     hadBaseline: !!baseline
   };
@@ -109,24 +158,39 @@ function _saveFormulaBaseline(ss) {
 
 /** Pure helper: renders an audit result as a human-readable report. */
 function _formatHealthReport(audit) {
+  const notices = [];
+
+  (audit.unlinked || []).forEach(u => notices.push(
+    `  • Row ${u.row} — ${u.account}${u.status ? ` (${u.status})` : ""}: manual value, no holdings tracked. Fine if intentional.`));
+  (audit.orphaned || []).forEach(o => notices.push(
+    `  • "${o.account}" has ${o.rows} holdings row(s) but NO Brokerage row on the ledger — this money is not counted in your net worth.`));
+
+  const lines = [];
+
   if (audit.healthy) {
-    return audit.hadBaseline
+    lines.push(audit.hadBaseline
       ? "✅ All managed formulas are intact."
-      : "✅ No damage detected. Baseline recorded — future checks compare against it.";
+      : "✅ No damage detected. Baseline recorded — future checks compare against it.");
+  } else {
+    lines.push("⚠️ Formula damage detected.", "");
+    if (audit.regressions.length) {
+      lines.push("Formula count dropped in:");
+      audit.regressions.forEach(r => lines.push(`  • ${r.label} — was ${r.was}, now ${r.now}`));
+      lines.push("");
+    }
+    if (audit.brokenLinks.length) {
+      lines.push("Brokerage rows with holdings but no link:");
+      audit.brokenLinks.forEach(b => lines.push(
+        `  • Row ${b.row} — ${b.account} (${b.holdings} holdings row(s) waiting)`));
+      lines.push("");
+    }
+    lines.push("Run WealthScript > 🛠 Repair Formulas to restore them.");
   }
 
-  const lines = ["⚠️ Formula damage detected.", ""];
-  if (audit.regressions.length) {
-    lines.push("Formula count dropped in:");
-    audit.regressions.forEach(r => lines.push(`  • ${r.label} — was ${r.was}, now ${r.now}`));
-    lines.push("");
+  if (notices.length) {
+    lines.push("", "ℹ️ For review (not errors, nothing will be changed):", ...notices);
   }
-  if (audit.brokenLinks.length) {
-    lines.push("Brokerage rows no longer linked to the Holdings tab:");
-    audit.brokenLinks.forEach(b => lines.push(`  • Row ${b.row} — ${b.account}`));
-    lines.push("");
-  }
-  lines.push("Run WealthScript > 🛠 Repair Formulas to restore them.");
+
   return lines.join("\n");
 }
 
@@ -186,20 +250,28 @@ function repairFormulas(ss_inject, silent = false) {
     });
   }
 
-  // --- 3. Ledger column E: Brokerage rows only. Manual rows are left alone.
-  const meta = ledger.getRange(LEDGER_FIRST_ROW, 1, LEDGER_NUM_ROWS, 2).getValues();
-  for (let i = 0; i < meta.length; i++) {
-    const r = LEDGER_FIRST_ROW + i;
-    if (String(meta[i][1]).trim() !== "Brokerage") continue;
-    const want = _buildBrokerageFormula(r);
-    const cell = ledger.getRange(r, 5);
-    if (cell.getFormula() === want) continue;
+  // --- 3. Ledger column E, Brokerage rows.
+  //        CRITICAL: only link rows whose account name actually appears on the
+  //        Holdings tab. Injecting a SUMPRODUCT that matches nothing evaluates
+  //        to 0 and would silently erase a manually maintained balance.
+  const links = _auditBrokerageLinks(ss);
+  links.broken.forEach(b => {
+    const want = _buildBrokerageFormula(b.row);
+    const cell = ledger.getRange(b.row, 5);
+    if (cell.getFormula() === want) return;
     if (cell.getFormula() === "" && cell.getValue() !== "") {
-      details.push(`Row ${r} (${meta[i][0]}): replaced a frozen literal with the live Holdings link`);
+      details.push(`Row ${b.row} (${b.account}): replaced a frozen literal with the live Holdings link`);
     }
     cell.setFormula(want);
     restored++;
-  }
+  });
+  links.unlinked.forEach(u => {
+    preserved++;
+    details.push(`Row ${u.row} (${u.account}): kept manual value — no holdings tracked under this name`);
+  });
+  links.orphaned.forEach(o => {
+    details.push(`⚠️ "${o.account}" has ${o.rows} holdings row(s) but no ledger row — not counted in net worth`);
+  });
 
   // --- 4. Holdings E (price) and F (total). E is skipped where the user has
   //        pinned a literal — options and unquotable tickers have no live price.

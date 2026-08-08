@@ -63,3 +63,42 @@ function test_formatHealthReport() {
   Assert.isTrue(bad.indexOf('IBKR') > -1, 'report: names the unlinked brokerage account');
   Assert.isTrue(bad.indexOf('Repair Formulas') > -1, 'report: tells the user what to do next');
 }
+
+function test_classifyBrokerageRows() {
+  //          A account                B class        ... J status (index 9)
+  const mk = (a, c, st) => [a, c, "", "", "", "", "", "", "", st];
+  const rows = [
+    mk("IBKR",     "Brokerage", "Active"),    // row 7  - linked
+    mk("Schwab",   "Brokerage", "Inactive"),  // row 8  - no formula, no holdings
+    mk("Fidelity", "Brokerage", "Active"),    // row 9  - no formula, no holdings
+    mk("Wealthfront","Brokerage","Active"),   // row 10 - no formula, HAS holdings
+    mk("Chase",    "Cash",      "Active")     // row 11 - not brokerage
+  ];
+  const holdings = { "IBKR": 25, "Wealthfront": 8, "TD Ameritrade": 4 };
+  const formulas = ["=SUMPRODUCT(1)", "", "", "", ""];
+
+  const r = _classifyBrokerageRows(rows, holdings, formulas);
+
+  Assert.equal(r.broken.length, 1, 'classify: only the row with holdings counts as broken');
+  Assert.equal(r.broken[0].account, "Wealthfront", 'classify: names the genuinely broken account');
+  Assert.equal(r.broken[0].holdings, 8, 'classify: reports how many holdings rows are waiting');
+
+  Assert.equal(r.unlinked.length, 2, 'classify: manual-value brokerages are unlinked, not broken');
+  Assert.isTrue(r.unlinked.some(u => u.account === "Fidelity"), 'classify: Active manual account is not an error');
+  Assert.isTrue(r.unlinked.some(u => u.status === "Inactive"), 'classify: status carried through for review');
+
+  Assert.equal(r.orphaned.length, 1, 'classify: holdings with no ledger row are flagged');
+  Assert.equal(r.orphaned[0].account, "TD Ameritrade", 'classify: catches a renamed account');
+  Assert.equal(r.orphaned[0].rows, 4, 'classify: reports orphaned holdings row count');
+}
+
+function test_healthReportSeparatesErrorsFromNotices() {
+  const rep = _formatHealthReport({
+    healthy: true, hadBaseline: true, regressions: [], brokenLinks: [],
+    unlinked: [{ row: 27, account: "Fidelity", status: "Active" }],
+    orphaned: [{ account: "TD Ameritrade", rows: 4 }]
+  });
+  Assert.isTrue(rep.indexOf('✅') > -1, 'report: notices alone do not make the sheet unhealthy');
+  Assert.isTrue(rep.indexOf('Fidelity') > -1, 'report: unlinked account surfaced as a notice');
+  Assert.isTrue(rep.indexOf('not counted in your net worth') > -1, 'report: orphaned holdings explained in impact terms');
+}
