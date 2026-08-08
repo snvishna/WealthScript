@@ -91,11 +91,11 @@ function _buildLedgerSnapshot(dataRange) {
  * @param {SpreadsheetApp.Sheet} configSheet
  * @returns {boolean}
  */
-function _isGistConfigured(configSheet) {
+function _isGistConfigured(configSheet, ss_inject) {
   if (!configSheet) return false;
-  const pat = configSheet.getRange("B13").getValue();
+  const pat = getSecret("githubPat", ss_inject);
   const gistId = configSheet.getRange("B14").getValue();
-  return pat && pat !== "PASTE_GITHUB_TOKEN_HERE" && gistId && gistId !== "PASTE_GIST_ID_HERE";
+  return !!pat && !!gistId && gistId !== "PASTE_GIST_ID_HERE";
 }
 
 /**
@@ -109,12 +109,12 @@ function backupToGitHub(ss_inject, silent = false) {
   const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   const configSheet = ss.getSheetByName("Settings & Config");
 
-  if (!_isGistConfigured(configSheet)) {
+  if (!_isGistConfigured(configSheet, ss)) {
     // Silently skip — not configured
     return false;
   }
 
-  const githubToken = configSheet.getRange("B13").getValue();
+  const githubToken = getSecret("githubPat", ss);
   const gistId = configSheet.getRange("B14").getValue();
   const backupData = _buildEnrichedBackup(ss);
 

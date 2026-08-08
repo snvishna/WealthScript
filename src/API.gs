@@ -56,10 +56,10 @@ function updateRealEstatePrices(ss_inject) {
 
   if (!configSheet || !sheet) return { updated: 0, skipped: ["Required tabs not found"] };
 
-  const apiKey = configSheet.getRange("B9").getValue();
+  const apiKey = getSecret("rapidApiKey", ss);
   const apiHost = configSheet.getRange("B10").getValue();
 
-  if (!apiKey || apiKey === "PASTE_KEY_HERE") return { updated: 0, skipped: ["RapidAPI key not configured"] };
+  if (!apiKey) return { updated: 0, skipped: ["RapidAPI key not configured"] };
 
   const propData = configSheet.getRange("A29:B45").getValues();
   const properties = [];

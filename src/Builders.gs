@@ -38,7 +38,7 @@ function buildSettingsTab(ss_inject) {
   styleRow(sheet.getRange("A10:B10"), THEME.kpiCardBg).setValues([["RapidAPI Host", "real-estate101.p.rapidapi.com"]]);
 
   sheet.getRange("A12").setValue("CLOUD BACKUP CONFIG (DISASTER RECOVERY)").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
-  styleRow(sheet.getRange("A13:B13"), THEME.kpiCardBg).setValues([["GitHub PAT (gist scope)", pat]]);
+  styleRow(sheet.getRange("A13:B13"), THEME.kpiCardBg).setValues([["GitHub PAT (gist scope)", SECRET_MOVED_NOTICE]]);
   styleRow(sheet.getRange("A14:B14"), THEME.kpiCardBg).setValues([["GitHub Gist ID", gistId]]);
   styleRow(sheet.getRange("A15:B15"), THEME.kpiCardBg).setValues([["GitHub Gist URL", "Run '🔐 Setup GitHub Backup' from the menu"]]);
   sheet.getRange("A15").setFontColor(THEME.mutedText);

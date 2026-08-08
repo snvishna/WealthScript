@@ -21,6 +21,7 @@ function onOpen() {
       .addItem('🩺 Check Formula Health', 'checkFormulaHealth')
       .addItem('🛠 Repair Formulas', 'repairFormulas')
       .addItem('🧭 Migrate Sheet Layout', 'migrateSheetLayout')
+      .addItem('🔒 Secure Stored Credentials', 'migrateSecretsToProperties')
       .addSeparator();
 
   // Broker sync is opt-in. The sync action only appears once a provider is

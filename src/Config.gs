@@ -108,3 +108,24 @@ const DASHBOARD_CONFIG = {
   // Add your own (e.g. "HSA", "529") if you track them the same way.
   holdingsLinkedClasses: ["Brokerage", "Retirement", "Crypto", "Health Savings"],
 };
+
+
+/**
+ * Credentials that must not live in a spreadsheet cell.
+ *
+ * A cell is visible to every collaborator, including view-only ones, and is
+ * carried into CSV/XLSX exports. These move to DocumentProperties, which is
+ * attached to the bound script project rather than to sheet content.
+ *
+ * `cell` is retained only so an un-migrated workbook keeps working and so
+ * migrateSecretsToProperties() knows where to look.
+ */
+const SECRET_SPECS = [
+  { name: "rapidApiKey", prop: "wealthscript.rapidapi.key", cell: "B9",
+    label: "RapidAPI Key", placeholder: "PASTE_KEY_HERE" },
+  { name: "githubPat", prop: "wealthscript.github.pat", cell: "B13",
+    label: "GitHub PAT (gist scope)", placeholder: "PASTE_GITHUB_TOKEN_HERE" }
+];
+
+/** Text left in a cell once its secret has moved to secure storage. */
+const SECRET_MOVED_NOTICE = "🔒 Stored securely (not in this sheet)";

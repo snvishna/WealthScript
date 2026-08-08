@@ -38,6 +38,11 @@ function runAllTests() {
   test_planBlockSyncRefusesWhenNoRunFits();
   test_planBlockSyncShrinkNeverNegative();
   test_headerAnnotationTolerated();
+  test_isRealSecret();
+  test_planSecretMigration();
+  test_planSecretMigrationIsIdempotent();
+  test_planSecretMigrationRefusesToGuessOnConflict();
+  test_secretSpecLookup();
   test_inactiveZeroIsDormantNotSuspect();
   test_verifyHeaders();
   test_generateInsight();

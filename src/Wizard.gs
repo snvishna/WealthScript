@@ -159,7 +159,8 @@ function _processGistToken(token) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const configSheet = ss.getSheetByName("Settings & Config");
   if (configSheet) {
-    configSheet.getRange("B13").setValue(pat);
+    // The PAT goes to secure storage, never into a cell.
+    setSecret("githubPat", pat, ss);
     configSheet.getRange("B14").setValue(gistId);
 
     const gistUrl = _buildGistUrl(gistId);
