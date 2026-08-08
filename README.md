@@ -122,8 +122,8 @@ and a position normaliser) and reusing `_planHoldingsSync()`.
 | Secret | Location | Visible to |
 |--------|----------|-----------|
 | IBKR Flex token / Query ID | `DocumentProperties` | Editors who open Apps Script |
-| GitHub PAT | **`Settings & Config!B13` — a plain cell** | Anyone with view access |
-| RapidAPI key | **`Settings & Config!B9` — a plain cell** | Anyone with view access |
+| GitHub PAT | `DocumentProperties` | Editors who open Apps Script |
+| RapidAPI key | `DocumentProperties` | Editors who open Apps Script |
 
 `DocumentProperties` is key/value storage attached to the bound Apps Script
 project rather than to sheet content. It does not appear in the grid, in a
@@ -133,9 +133,24 @@ It is **not** a secret vault: anyone with edit access can open the script editor
 and print it. It protects against view-only collaborators and accidental
 leakage through exports, not against your own editors.
 
-The two cell-stored secrets above are a known weakness — if you share the
-workbook read-only, both are exposed. Moving them to `DocumentProperties`
-is tracked work.
+**Migrating an existing workbook.** Earlier versions kept the GitHub PAT in
+`Settings & Config!B13` and the RapidAPI key in `B9`, where any collaborator
+could read them. Run **WealthScript → 🔒 Secure Stored Credentials** once: it
+copies each value into secure storage and replaces the cell with a
+`🔒 Stored securely` notice. Idempotent, so a second run does nothing.
+
+If a cell and secure storage hold *different* values, neither is touched and
+both are reported — the tool will not guess which is current, since restoring a
+revoked credential is worse than doing nothing. Clear the stale one and re-run.
+
+Reads fall back to the legacy cell when secure storage is empty, so an
+un-migrated workbook keeps working. Nothing breaks if you never run it; you just
+stay exposed.
+
+**Rotate after migrating.** Moving a secret does not un-share it. If the
+workbook has ever been shared, or a value has appeared in a screenshot or an
+export, regenerate it at the provider — GitHub for the PAT, RapidAPI for the
+key, Client Portal for the Flex token.
 
 ### 🩺 Formula Integrity & Recovery
 

@@ -535,3 +535,176 @@ function rebuildCashFlowDestructive() {
   }
   buildCashFlowTab();
 }
+
+
+/* ------------------------------------------------------------------ *
+ * SECRET STORAGE
+ * ------------------------------------------------------------------ */
+
+/** @returns {Object|null} the spec for a named secret */
+function _secretSpec(name) {
+  for (let i = 0; i < SECRET_SPECS.length; i++) {
+    if (SECRET_SPECS[i].name === name) return SECRET_SPECS[i];
+  }
+  return null;
+}
+
+/**
+ * Pure helper: is this cell value a real secret, or a placeholder / notice?
+ * @param {*} value
+ * @param {string} placeholder
+ * @returns {boolean}
+ */
+function _isRealSecret(value, placeholder) {
+  const v = String(value === undefined || value === null ? "" : value).trim();
+  if (!v) return false;
+  if (v === placeholder) return false;
+  if (v === SECRET_MOVED_NOTICE) return false;
+  return true;
+}
+
+/**
+ * Reads a secret, preferring secure storage and falling back to the legacy
+ * cell so a workbook that hasn't migrated yet keeps working.
+ *
+ * @param {string} name - key from SECRET_SPECS
+ * @param {SpreadsheetApp.Spreadsheet} [ss_inject]
+ * @returns {string} the secret, or "" when unset
+ */
+function getSecret(name, ss_inject) {
+  const spec = _secretSpec(name);
+  if (!spec) return "";
+
+  const stored = PropertiesService.getDocumentProperties().getProperty(spec.prop);
+  if (stored) return stored;
+
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const cfg = ss.getSheetByName("Settings & Config");
+  if (!cfg) return "";
+
+  const cellValue = cfg.getRange(spec.cell).getValue();
+  return _isRealSecret(cellValue, spec.placeholder) ? String(cellValue).trim() : "";
+}
+
+/**
+ * Writes a secret to secure storage and leaves a visible notice in its cell.
+ * @param {string} name
+ * @param {string} value
+ * @param {SpreadsheetApp.Spreadsheet} [ss_inject]
+ */
+function setSecret(name, value, ss_inject) {
+  const spec = _secretSpec(name);
+  if (!spec) return;
+
+  PropertiesService.getDocumentProperties().setProperty(spec.prop, String(value).trim());
+
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const cfg = ss.getSheetByName("Settings & Config");
+  if (cfg) cfg.getRange(spec.cell).setValue(SECRET_MOVED_NOTICE);
+}
+
+/**
+ * Pure helper: decides what a migration run would do.
+ *
+ * @param {Array<Object>} specs - SECRET_SPECS
+ * @param {Object<string,*>} cellValues - name -> current cell value
+ * @param {Object<string,*>} propValues - name -> current stored value
+ * @returns {{move: Array, alreadySecure: Array, notSet: Array, conflict: Array}}
+ */
+function _planSecretMigration(specs, cellValues, propValues) {
+  const move = [], alreadySecure = [], notSet = [], conflict = [];
+
+  (specs || []).forEach(spec => {
+    const cell = (cellValues || {})[spec.name];
+    const prop = (propValues || {})[spec.name];
+    const cellIsReal = _isRealSecret(cell, spec.placeholder);
+
+    if (prop && cellIsReal && String(prop).trim() !== String(cell).trim()) {
+      // Both set and different — never silently pick one.
+      conflict.push(spec);
+    } else if (prop) {
+      alreadySecure.push(spec);
+    } else if (cellIsReal) {
+      move.push(spec);
+    } else {
+      notSet.push(spec);
+    }
+  });
+
+  return { move: move, alreadySecure: alreadySecure, notSet: notSet, conflict: conflict };
+}
+
+/**
+ * Menu action: moves credentials out of Settings cells into secure storage.
+ * Idempotent — running it twice is a no-op.
+ *
+ * @param {SpreadsheetApp.Spreadsheet} [ss_inject]
+ * @param {boolean} [silent=false]
+ * @returns {{moved: Array<string>, alreadySecure: Array<string>, notSet: Array<string>, conflict: Array<string>}}
+ */
+function migrateSecretsToProperties(ss_inject, silent = false) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const cfg = ss.getSheetByName("Settings & Config");
+  const props = PropertiesService.getDocumentProperties();
+
+  if (!cfg) {
+    if (!silent) SpreadsheetApp.getUi().alert("Settings & Config tab not found.");
+    return { moved: [], alreadySecure: [], notSet: [], conflict: [] };
+  }
+
+  const cellValues = {}, propValues = {};
+  SECRET_SPECS.forEach(spec => {
+    cellValues[spec.name] = cfg.getRange(spec.cell).getValue();
+    propValues[spec.name] = props.getProperty(spec.prop);
+  });
+
+  const plan = _planSecretMigration(SECRET_SPECS, cellValues, propValues);
+
+  plan.move.forEach(spec => {
+    props.setProperty(spec.prop, String(cellValues[spec.name]).trim());
+    cfg.getRange(spec.cell).setValue(SECRET_MOVED_NOTICE);
+  });
+
+  // A value already in secure storage means the cell copy is redundant.
+  plan.alreadySecure.forEach(spec => {
+    if (_isRealSecret(cellValues[spec.name], spec.placeholder)) {
+      cfg.getRange(spec.cell).setValue(SECRET_MOVED_NOTICE);
+    }
+  });
+
+  if (!silent) {
+    const lines = ["🔒 Credential storage", ""];
+    if (plan.move.length) {
+      lines.push("Moved out of the sheet:");
+      plan.move.forEach(s => lines.push(`  • ${s.label} (was ${s.cell})`));
+      lines.push("");
+    }
+    if (plan.alreadySecure.length) {
+      lines.push("Already secure:");
+      plan.alreadySecure.forEach(s => lines.push(`  • ${s.label}`));
+      lines.push("");
+    }
+    if (plan.notSet.length) {
+      lines.push("Not configured (nothing to move):");
+      plan.notSet.forEach(s => lines.push(`  • ${s.label}`));
+      lines.push("");
+    }
+    if (plan.conflict.length) {
+      lines.push("⚠️ Different values in the cell AND in secure storage —");
+      lines.push("   left untouched so nothing is guessed at:");
+      plan.conflict.forEach(s => lines.push(`  • ${s.label} (${s.cell})`));
+      lines.push("   Clear whichever is stale, then re-run.");
+      lines.push("");
+    }
+    if (plan.move.length) {
+      lines.push("These values were visible to anyone with access to this");
+      lines.push("workbook, including view-only collaborators. If the sheet has");
+      lines.push("ever been shared, rotate them at the provider.");
+    }
+    SpreadsheetApp.getUi().alert(lines.join("\n"));
+  }
+
+  const names = arr => arr.map(s => s.label);
+  return { moved: names(plan.move), alreadySecure: names(plan.alreadySecure),
+           notSet: names(plan.notSet), conflict: names(plan.conflict) };
+}
