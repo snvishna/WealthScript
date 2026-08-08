@@ -49,19 +49,93 @@ account's positions automatically.
   DocumentProperties, so it isn't visible to collaborators and doesn't ride
   along into the Gist/Drive backups.
 
-Your Flex Query must include, in the **Open Positions** section: `Symbol`,
-`UnderlyingSymbol`, `AssetCategory`, `Position`, `MarkPrice`, `Multiplier`,
-`Strike`, `Expiry`, `PutCall`, `Currency` — plus the **Cash Report** section with
-`Currency` and `EndingCash`. If `Position` is missing the quantity is derived
-from `positionValue / (markPrice × multiplier)`, but including it is more robust.
+#### Setting up IBKR Flex — step by step
 
-Setup: **WealthScript > 🔗 Connect IBKR (optional)**. You'll need a Flex Query ID
-and a Flex Web Service token from Client Portal. Set the token to the longest
-available expiry — the default is six hours, which will break scheduled syncs —
-and leave the IP restriction blank, since Google's servers don't have a fixed IP.
+**A. Create the Flex Query**
 
-Adding another broker means implementing two pure functions (a response parser
+1. Log in to [Client Portal](https://www.interactivebrokers.com/sso/Login).
+2. **Performance & Reports → Flex Queries → Create Activity Flex Query** (the `+` button).
+3. Name it something recognisable, e.g. `WealthScript Refresh Query`.
+4. Open the **Open Positions** section and enable these fields:
+   `Symbol`, `UnderlyingSymbol`, `AssetCategory`, `Position`, `MarkPrice`,
+   `Multiplier`, `Strike`, `Expiry`, `PutCall`, `Currency`, `PositionValue`.
+   Set *Options* to **Summary** (not Lot-level) so each holding is one row.
+5. Open the **Cash Report** section and enable `Currency` and `EndingCash`.
+6. Delivery configuration: **Format = XML**, **Period = Last Business Day**.
+7. Save. The query list now shows a numeric **Query ID** — note it down.
+
+> If `Position` is missing, quantity is derived from
+> `positionValue / (markPrice × multiplier)`. That works, but enabling the field
+> is more robust — a position with a zero mark can't be derived.
+
+**B. Enable the Flex Web Service and generate a token**
+
+8. **Performance & Reports → Flex Queries → Flex Web Service Configuration.**
+9. Tick the **Flex Web Service Status** checkbox and **Save**. The status becomes ACTIVE.
+10. In **Should Expire After**, pick the **longest** available option. The default
+    is 6 hours, which will break any scheduled sync.
+11. Leave **Valid For IP Address** blank — Google's servers don't have a fixed IP.
+12. Click **Generate New Token** and copy it immediately.
+
+**C. Connect the sheet**
+
+13. **WealthScript → 🔗 Connect IBKR (optional)** and paste, in order: the token,
+    the Query ID, and the Account Name exactly as it appears in column A of your
+    Brokerage Holdings tab (e.g. `IBKR`).
+14. Reload the sheet. The menu now shows **🔗 Sync IBKR Positions**.
+15. Run it once manually and read the report before scheduling anything.
+
+#### Regenerating the token
+
+Tokens expire, and generating a new one **invalidates the current one** — so do
+these two steps together or the sync will start failing with error `1012`.
+
+1. **Performance & Reports → Flex Queries → Flex Web Service Configuration.**
+2. Set **Should Expire After** to the longest option, leave the IP field blank,
+   and click **Generate New Token**. Copy it.
+3. In the sheet: **WealthScript → ⚙️ Reconfigure IBKR Flex** and paste the new
+   token. The Query ID and Account Name are unchanged, but re-enter them.
+
+Regenerate immediately if a token has ever appeared in a chat log, screenshot,
+commit, or support ticket. A Flex token grants read access to your full
+statement.
+
+#### Flex error codes you may hit
+
+| Code | Meaning | Fix |
+|------|---------|-----|
+| `1012` | Token has expired | Generate a new token, re-run the wizard |
+| `1018` | Too many requests | Rate limited — wait and retry |
+| `1019` | Statement still generating | Handled automatically by retry |
+| `1020` | Invalid request | Stale reference code, wrong Query ID, or a token that was superseded |
+
+Note that `q=` means different things in the two endpoints: the **Query ID** for
+`SendRequest`, the **Reference Code** it returns for `GetStatement`. Reference
+codes are single-use and short-lived.
+
+Adding another broker means implementing two pure functions
+ (a response parser
 and a position normaliser) and reusing `_planHoldingsSync()`.
+
+### 🔒 Where credentials are stored
+
+| Secret | Location | Visible to |
+|--------|----------|-----------|
+| IBKR Flex token / Query ID | `DocumentProperties` | Editors who open Apps Script |
+| GitHub PAT | **`Settings & Config!B13` — a plain cell** | Anyone with view access |
+| RapidAPI key | **`Settings & Config!B9` — a plain cell** | Anyone with view access |
+
+`DocumentProperties` is key/value storage attached to the bound Apps Script
+project rather than to sheet content. It does not appear in the grid, in a
+CSV/XLSX export, or in the Gist and Drive backups.
+
+It is **not** a secret vault: anyone with edit access can open the script editor
+and print it. It protects against view-only collaborators and accidental
+leakage through exports, not against your own editors.
+
+The two cell-stored secrets above are a known weakness — if you share the
+workbook read-only, both are exposed. Moving them to `DocumentProperties`
+is tracked work.
 
 ### 🩺 Formula Integrity & Recovery
 
