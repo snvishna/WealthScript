@@ -10,6 +10,7 @@ function runAllTests() {
   test_driveBackupPruning();
   test_currencySymbol();
   test_abbrFmt();
+  test_planRealEstateUpdates();
   test_generateInsight();
   test_validatePATFormat();
   test_buildGistUrl();

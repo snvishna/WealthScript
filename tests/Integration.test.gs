@@ -415,3 +415,40 @@ function _e2e_wizardContracts() {
 
   Logger.log("✅ S14: Wizard server-side contracts verified");
 }
+
+
+/**
+ * Regression guard for the bulk-write bug: updateRealEstatePrices used to do
+ * getValues("E1:E100") -> setValues("E1:E100"), which froze every formula in the
+ * column into a literal on every weekly cron run.
+ */
+function test_planRealEstateUpdates() {
+  //                A (Account)            B (Asset Class)
+  const rows = [
+    ["Taxable Brokerage",                  "Brokerage"],      // row 7
+    ["Primary Residence",                  "Real Estate"],    // row 8
+    ["Investment Property",                "Real Estate"],    // row 9
+    ["Primary Residence",                  "Real Estate"],    // row 10 (duplicate name)
+    ["Rental Deposit",                     "Receivable"]      // row 11
+  ];
+
+  const plan = _planRealEstateUpdates(rows, [
+    { name: "Primary Residence",   zestimate: 512000 },
+    { name: "Investment Property", zestimate: 0 },
+    { name: "Ghost Property",      zestimate: 900000 },
+    { name: "Rental Deposit",      zestimate: 4000 }
+  ], 7);
+
+  Assert.equal(plan.updates.length, 2, 'planRE: both duplicate matches are returned, not just the first');
+  Assert.equal(plan.updates[0].row, 8, 'planRE: first match maps to the correct sheet row');
+  Assert.equal(plan.updates[1].row, 10, 'planRE: duplicate account name also updated');
+  Assert.equal(plan.updates[0].value, 512000, 'planRE: Zestimate carried through');
+
+  const joined = plan.skipped.join(' | ');
+  Assert.isTrue(joined.indexOf('Investment Property') > -1, 'planRE: zero Zestimate is skipped, not written as 0');
+  Assert.isTrue(joined.indexOf('Ghost Property') > -1, 'planRE: unmatched account is reported');
+  Assert.isTrue(joined.indexOf('Rental Deposit') > -1, 'planRE: non-Real-Estate asset class is never written');
+
+  const none = _planRealEstateUpdates(rows, [], 7);
+  Assert.equal(none.updates.length, 0, 'planRE: empty fetch produces no writes');
+}
