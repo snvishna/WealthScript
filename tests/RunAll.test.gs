@@ -20,6 +20,9 @@ function runAllTests() {
   test_classifyBrokerageRows();
   test_classifyAcrossAssetClasses();
   test_holdingsPriceFormulaReservesCash();
+  test_headerMismatchBlocksReport();
+  test_inactiveZeroIsDormantNotSuspect();
+  test_verifyHeaders();
   test_generateInsight();
   test_validatePATFormat();
   test_buildGistUrl();

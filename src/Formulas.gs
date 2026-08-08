@@ -24,6 +24,38 @@ const CFG = "'Settings & Config'";
 const FIRE_TARGET_CELL = `${CFG}!$B$22`;
 const CURRENCY_CELLS = [`${CFG}!B24`, `${CFG}!B25`];
 
+/**
+ * Canonical header rows. repairFormulas() and migrateSheetLayout() write by
+ * hardcoded A1 reference (I4, M2, ...), so an inserted or deleted column would
+ * send every formula to the wrong cell while still reporting success. These
+ * are asserted before any write.
+ */
+const LEDGER_HEADERS = ["Account", "Asset Class", "Currency", "Initial Capital",
+  "Current Value", "Exchange Rate (to USD)", "Tax Rate", "Gross Worth (USD)",
+  "Net Worth (USD)", "Status", "Remarks"];
+
+const HOLDINGS_HEADERS = ["Account Name", "Asset Category", "Ticker Symbol",
+  "Quantity", "Live Price", "Total Value"];
+
+/**
+ * Pure helper: compares an actual header row against the canonical one.
+ * @param {Array<*>} actual - values read from the sheet's header row
+ * @param {Array<string>} expected - canonical headers
+ * @returns {{ok: boolean, problems: Array<string>}}
+ */
+function _verifyHeaders(actual, expected) {
+  const problems = [];
+  const col = n => String.fromCharCode(65 + n);
+
+  for (let i = 0; i < expected.length; i++) {
+    const got = String((actual || [])[i] === undefined ? "" : actual[i]).trim();
+    if (got !== expected[i]) {
+      problems.push(`${col(i)} should be "${expected[i]}" but is "${got}"`);
+    }
+  }
+  return { ok: problems.length === 0, problems: problems };
+}
+
 /** Asset classes counted as liquid on the dashboard quick-stats row. */
 const LIQUID_CLASSES = ["Cash", "Brokerage", "Crypto", "Receivable"];
 

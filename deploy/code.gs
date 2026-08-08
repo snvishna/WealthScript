@@ -134,6 +134,38 @@ const CFG = "'Settings & Config'";
 const FIRE_TARGET_CELL = `${CFG}!$B$22`;
 const CURRENCY_CELLS = [`${CFG}!B24`, `${CFG}!B25`];
 
+/**
+ * Canonical header rows. repairFormulas() and migrateSheetLayout() write by
+ * hardcoded A1 reference (I4, M2, ...), so an inserted or deleted column would
+ * send every formula to the wrong cell while still reporting success. These
+ * are asserted before any write.
+ */
+const LEDGER_HEADERS = ["Account", "Asset Class", "Currency", "Initial Capital",
+  "Current Value", "Exchange Rate (to USD)", "Tax Rate", "Gross Worth (USD)",
+  "Net Worth (USD)", "Status", "Remarks"];
+
+const HOLDINGS_HEADERS = ["Account Name", "Asset Category", "Ticker Symbol",
+  "Quantity", "Live Price", "Total Value"];
+
+/**
+ * Pure helper: compares an actual header row against the canonical one.
+ * @param {Array<*>} actual - values read from the sheet's header row
+ * @param {Array<string>} expected - canonical headers
+ * @returns {{ok: boolean, problems: Array<string>}}
+ */
+function _verifyHeaders(actual, expected) {
+  const problems = [];
+  const col = n => String.fromCharCode(65 + n);
+
+  for (let i = 0; i < expected.length; i++) {
+    const got = String((actual || [])[i] === undefined ? "" : actual[i]).trim();
+    if (got !== expected[i]) {
+      problems.push(`${col(i)} should be "${expected[i]}" but is "${got}"`);
+    }
+  }
+  return { ok: problems.length === 0, problems: problems };
+}
+
 /** Asset classes counted as liquid on the dashboard quick-stats row. */
 const LIQUID_CLASSES = ["Cash", "Brokerage", "Crypto", "Receivable"];
 
@@ -963,7 +995,7 @@ function buildPortfolioTracker(ss_inject) {
   sheet.getRange("A5:K5").setBackground(THEME.accentBar);
   sheet.setRowHeight(5, 3);
 
-  const headers = ["Account","Asset Class","Currency","Initial Capital","Current Value","Exchange Rate (to USD)","Tax Rate","Gross Worth (USD)","Net Worth (USD)","Status","Remarks"];
+  const headers = LEDGER_HEADERS;
   sheet.getRange(6, 1, 1, headers.length)
     .setValues([headers])
     .setBackground(THEME.headerBg).setFontColor(THEME.headerText)
@@ -1056,7 +1088,7 @@ function buildHoldingsTab(ss_inject) {
 
   sheet.setHiddenGridlines(true);
   
-  const headers = ["Account Name", "Asset Category", "Ticker Symbol", "Quantity", "Live Price", "Total Value"];
+  const headers = HOLDINGS_HEADERS;
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setBackground(THEME.headerBg).setFontColor(THEME.headerText).setFontWeight("bold");
 
   const sampleData = [
@@ -1800,7 +1832,7 @@ function _countManagedFormulas(ss) {
  */
 function _classifyBrokerageRows(ledgerRows, holdingAccounts, formulaCol, linkedClasses) {
   const classes = linkedClasses || DASHBOARD_CONFIG.holdingsLinkedClasses || ["Brokerage"];
-  const broken = [], suspect = [], unlinked = [];
+  const broken = [], suspect = [], unlinked = [], dormant = [];
   const seen = {};
 
   for (let i = 0; i < ledgerRows.length; i++) {
@@ -1819,10 +1851,15 @@ function _classifyBrokerageRows(ledgerRows, holdingAccounts, formulaCol, linkedC
 
     if (holdingAccounts[account]) {
       broken.push(Object.assign({ holdings: holdingAccounts[account] }, base));
-    } else if (value === "" || value === null || Number(value) === 0) {
-      suspect.push(base);
+    } else if (value !== "" && value !== null && Number(value) !== 0) {
+      unlinked.push(base);                       // a real manually-kept balance
+    } else if (status === "Active") {
+      suspect.push(base);                        // $0 on a live account: damage
     } else {
-      unlinked.push(base);
+      // Inactive rows are excluded from every SUMIFS(...,"Active"), so a zero
+      // there is harmless by definition. Noting it is fine; blocking snapshots
+      // on it would train the user to click through the warning.
+      dormant.push(base);
     }
   }
 
@@ -1832,7 +1869,7 @@ function _classifyBrokerageRows(ledgerRows, holdingAccounts, formulaCol, linkedC
     .filter(n => !seen[n])
     .map(n => ({ account: n, rows: holdingAccounts[n] }));
 
-  return { broken: broken, suspect: suspect, unlinked: unlinked, orphaned: orphaned };
+  return { broken: broken, suspect: suspect, unlinked: unlinked, dormant: dormant, orphaned: orphaned };
 }
 
 /**
@@ -1843,7 +1880,7 @@ function _classifyBrokerageRows(ledgerRows, holdingAccounts, formulaCol, linkedC
 function _auditBrokerageLinks(ss) {
   const ledger = ss.getSheetByName("Dashboard & Ledger");
   const holdings = ss.getSheetByName("Brokerage Holdings");
-  if (!ledger) return { broken: [], suspect: [], unlinked: [], orphaned: [] };
+  if (!ledger) return { broken: [], suspect: [], unlinked: [], dormant: [], orphaned: [] };
 
   const holdingAccounts = {};
   if (holdings) {
@@ -1883,11 +1920,14 @@ function auditFormulaHealth(ss_inject) {
   return {
     // Only genuine damage blocks a snapshot. Unlinked and orphaned accounts are
     // reported for review but may well be intentional.
-    healthy: diff.ok && links.broken.length === 0 && links.suspect.length === 0,
+    healthy: diff.ok && links.broken.length === 0 && links.suspect.length === 0
+      && _auditHeaders(ss).length === 0,
     regressions: diff.regressions,
     brokenLinks: links.broken,
     suspect: links.suspect,
     unlinked: links.unlinked,
+    dormant: links.dormant,
+    headerProblems: _auditHeaders(ss),
     orphaned: links.orphaned,
     counts: counts,
     hadBaseline: !!baseline
@@ -1906,10 +1946,21 @@ function _formatHealthReport(audit) {
 
   (audit.unlinked || []).forEach(u => notices.push(
     `  • Row ${u.row} — ${u.account}${u.status ? ` (${u.status})` : ""}: manual value, no holdings tracked. Fine if intentional.`));
+  (audit.dormant || []).forEach(d => notices.push(
+    `  • Row ${d.row} — ${d.account} [${d.assetClass}] is ${d.status || "not Active"} and holds 0. Excluded from net worth, so this is harmless.`));
   (audit.orphaned || []).forEach(o => notices.push(
     `  • "${o.account}" has ${o.rows} holdings row(s) but NO Brokerage row on the ledger — this money is not counted in your net worth.`));
 
   const lines = [];
+
+  if ((audit.headerProblems || []).length) {
+    lines.push("🛑 Header row does not match the expected layout.", "");
+    audit.headerProblems.forEach(h => lines.push(`  • ${h}`));
+    lines.push("", "A column has probably been inserted or deleted. Repair writes by",
+                   "fixed cell reference, so it is BLOCKED until the headers match —",
+                   "otherwise it would write every formula into the wrong column.", "");
+    return lines.join("\n");
+  }
 
   if (audit.healthy) {
     lines.push(audit.hadBaseline
@@ -1954,6 +2005,29 @@ function checkFormulaHealth() {
   SpreadsheetApp.getUi().alert(_formatHealthReport(audit));
 }
 
+/**
+ * Checks both header rows against canonical. A mismatch means a column was
+ * inserted or removed, and every hardcoded A1 write in this file would land in
+ * the wrong cell.
+ * @param {SpreadsheetApp.Spreadsheet} ss
+ * @returns {Array<string>}
+ */
+function _auditHeaders(ss) {
+  const out = [];
+  const pairs = [
+    { name: "Dashboard & Ledger", row: 6, expected: LEDGER_HEADERS },
+    { name: "Brokerage Holdings", row: 1, expected: HOLDINGS_HEADERS }
+  ];
+  pairs.forEach(p => {
+    const sheet = ss.getSheetByName(p.name);
+    if (!sheet) return;
+    const actual = sheet.getRange(p.row, 1, 1, p.expected.length).getValues()[0];
+    _verifyHeaders(actual, p.expected).problems
+      .forEach(msg => out.push(`${p.name} row ${p.row}: column ${msg}`));
+  });
+  return out;
+}
+
 /* ------------------------------------------------------------------ *
  * REPAIR
  * ------------------------------------------------------------------ */
@@ -1980,6 +2054,17 @@ function repairFormulas(ss_inject, silent = false) {
 
   if (!ledger || !holdings) {
     return { restored: 0, preserved: 0, details: ["Required tabs not found — run First Time Setup."] };
+  }
+
+  // Refuse rather than write into shifted columns.
+  const headerProblems = _auditHeaders(ss);
+  if (headerProblems.length) {
+    const msg = ["🛑 Repair aborted — the header row doesn't match the expected layout.", ""]
+      .concat(headerProblems.map(h => "  • " + h))
+      .concat(["", "Repair writes by fixed cell reference. Fix the headers first,",
+               "then run Repair Formulas again."]).join("\n");
+    if (!silent) SpreadsheetApp.getUi().alert(msg);
+    return { restored: 0, preserved: 0, details: headerProblems };
   }
 
   // --- 1. Fixed KPI cells. These are always formulas; a literal here is damage.
@@ -2020,6 +2105,10 @@ function repairFormulas(ss_inject, silent = false) {
   links.unlinked.forEach(u => {
     preserved++;
     details.push(`Row ${u.row} (${u.account}): kept manual value ${u.value} — no holdings under this name`);
+  });
+  links.dormant.forEach(d => {
+    preserved++;
+    details.push(`Row ${d.row} (${d.account}): ${d.status || "not Active"} and $0 — left alone, not counted in net worth`);
   });
   links.suspect.forEach(x => {
     details.push(`⚠️ Row ${x.row} (${x.account}) frozen at 0 with no matching holdings — counting as $0. Fix the account name, then re-run Repair.`);
@@ -2096,6 +2185,14 @@ function migrateSheetLayout(ss_inject, silent = false) {
 
   if (!cfg || !ledger) {
     return { applied: [], skipped: ["Required tabs not found — run First Time Setup."] };
+  }
+
+  const headerProblems = _auditHeaders(ss);
+  if (headerProblems.length) {
+    const msg = ["🛑 Migration aborted — the header row doesn't match the expected layout.", ""]
+      .concat(headerProblems.map(h => "  • " + h)).join("\n");
+    if (!silent) SpreadsheetApp.getUi().alert(msg);
+    return { applied: [], skipped: headerProblems };
   }
 
   // --- Migration 1: FIRE target row ---
