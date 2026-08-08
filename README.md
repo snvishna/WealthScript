@@ -34,14 +34,26 @@ account's positions automatically.
   `🔗 Connect IBKR (optional)` entry.
 - **Scoped.** A sync owns exactly one Account Name on the Holdings tab. Rows
   belonging to any other account are never read or written.
-- **Non-destructive.** Positions you no longer hold are zeroed and reported, not
-  deleted — a closed position is information, a missing row is an unauditable
-  gap. Options get a literal mark price (GOOGLEFINANCE cannot price OCC
-  symbols); everything else keeps its live formula so the sheet stays current
-  between syncs.
+- **Block rebuild, with guards.** The feed is authoritative for the account it
+  owns, so its block is rewritten wholesale. A feed carrying no positions is
+  treated as a failed request, never an emptied account. A sync that would shrink
+  the block by more than 30% asks first. Any position the parser can't read
+  aborts the whole run rather than writing a partial block.
+- **Hybrid pricing.** Options get a literal mark from the statement, because
+  GOOGLEFINANCE cannot price an OCC symbol. Everything else keeps a live
+  GOOGLEFINANCE formula so the sheet stays current between syncs instead of
+  freezing at the last close.
+- **Column B is never written**, so your own asset-classification formula
+  survives.
 - **Credentials never touch a cell.** The Flex token lives in
   DocumentProperties, so it isn't visible to collaborators and doesn't ride
   along into the Gist/Drive backups.
+
+Your Flex Query must include, in the **Open Positions** section: `Symbol`,
+`UnderlyingSymbol`, `AssetCategory`, `Position`, `MarkPrice`, `Multiplier`,
+`Strike`, `Expiry`, `PutCall`, `Currency` — plus the **Cash Report** section with
+`Currency` and `EndingCash`. If `Position` is missing the quantity is derived
+from `positionValue / (markPrice × multiplier)`, but including it is more robust.
 
 Setup: **WealthScript > 🔗 Connect IBKR (optional)**. You'll need a Flex Query ID
 and a Flex Web Service token from Client Portal. Set the token to the longest

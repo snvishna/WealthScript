@@ -145,7 +145,7 @@ const LEDGER_HEADERS = ["Account", "Asset Class", "Currency", "Initial Capital",
   "Net Worth (USD)", "Status", "Remarks"];
 
 const HOLDINGS_HEADERS = ["Account Name", "Asset Category", "Ticker Symbol",
-  "Quantity", "Live Price", "Total Value"];
+  "Quantity", "Live Price", "Total Value (USD)"];
 
 /**
  * Pure helper: compares an actual header row against the canonical one.
@@ -157,9 +157,16 @@ function _verifyHeaders(actual, expected) {
   const problems = [];
   const col = n => String.fromCharCode(65 + n);
 
+  // A parenthetical annotation is a labelling choice, not a structural change:
+  // "Total Value" and "Total Value (USD)" describe the same column. Compare on
+  // the text before " (" so users can annotate headers freely, while a genuine
+  // mismatch ("Net Worth (USD)" sitting in the Status column) still fails.
+  const base = t => String(t === undefined || t === null ? "" : t)
+    .trim().replace(/\s*\(.*\)\s*$/, "").trim().toLowerCase();
+
   for (let i = 0; i < expected.length; i++) {
     const got = String((actual || [])[i] === undefined ? "" : actual[i]).trim();
-    if (got !== expected[i]) {
+    if (base(got) !== base(expected[i])) {
       problems.push(`${col(i)} should be "${expected[i]}" but is "${got}"`);
     }
   }
@@ -2329,6 +2336,9 @@ const FLEX_PROP_TOKEN = "wealthscript.flex.token";
 const FLEX_PROP_QUERY = "wealthscript.flex.queryId";
 const FLEX_PROP_ACCOUNT = "wealthscript.flex.accountName";
 
+/** A sync that would shrink an account's block by more than this needs confirming. */
+const SYNC_MAX_SHRINK = 0.30;
+
 /* ------------------------------------------------------------------ *
  * PURE HELPERS
  * ------------------------------------------------------------------ */
@@ -2367,12 +2377,24 @@ function _normaliseFlexPosition(attrs) {
   if (!attrs) return null;
 
   const cat = String(attrs.assetCategory || "").toUpperCase();
-  const qty = Number(attrs.position);
   const mark = Number(attrs.markPrice);
-  if (!isFinite(qty) || qty === 0) return null;
-
   const isOption = (cat === "OPT" || cat === "FOP");
   const multiplier = Number(attrs.multiplier) || (isOption ? 100 : 1);
+
+  // Quantity is only present when the Flex Query includes the Position field.
+  // When it is absent, derive it: positionValue = qty * markPrice * multiplier.
+  // Reporting a position with an unknowable quantity as "closed" would be far
+  // worse than refusing, so return null and let the caller count the failure.
+  let qty = Number(attrs.position);
+  if (!isFinite(qty)) {
+    const value = Number(attrs.positionValue);
+    if (isFinite(value) && isFinite(mark) && mark !== 0 && multiplier !== 0) {
+      qty = value / (mark * multiplier);
+      // Share counts are whole or finely fractional; scrub float noise.
+      qty = Math.abs(qty - Math.round(qty)) < 1e-6 ? Math.round(qty) : Number(qty.toFixed(6));
+    }
+  }
+  if (!isFinite(qty) || qty === 0) return null;
 
   const ticker = isOption
     ? _buildOccSymbol(attrs.underlyingSymbol || attrs.symbol, attrs.expiry || attrs.expirationDate,
@@ -2411,6 +2433,79 @@ function _normaliseFlexCash(currency, amount) {
     category: "Cash",
     currency: cur
   };
+}
+
+/**
+ * Plans a wholesale rebuild of one account's block on the Holdings grid.
+ *
+ * The feed is authoritative for the account it owns, so the block is rewritten
+ * rather than reconciled row by row. Match-and-update produced a worse failure
+ * mode: a feed that returned nothing looked identical to every position having
+ * been closed, and quietly zeroed the lot.
+ *
+ * Guards, in order:
+ *  - a feed carrying no positions is a failed feed, never an emptied account
+ *  - a feed that would shrink the block by more than SYNC_MAX_SHRINK is
+ *    reported as unsafe and applied only on explicit confirmation
+ *  - the target block must be contiguous and consist only of rows this account
+ *    already owns plus blank rows, so another account is never overwritten
+ *
+ * @param {Array<Array<*>>} existingRows - A..G values starting at firstRow
+ * @param {Array<Object>} positions - normalised specs
+ * @param {string} accountName
+ * @param {number} firstRow
+ * @param {number} lastRow
+ * @returns {{ok: boolean, reason: string, startRow: number, writes: Array, clears: Array, removed: Array, shrinkRatio: number}}
+ */
+function _planBlockSync(existingRows, positions, accountName, firstRow, lastRow) {
+  const acct = String(accountName).trim();
+  const fail = reason => ({ ok: false, reason: reason, startRow: 0, writes: [], clears: [], removed: [], shrinkRatio: 0 });
+
+  if (!positions || !positions.length) {
+    return fail("The feed returned no positions. Nothing was changed — a feed carrying " +
+                "nothing is a failed request, not an emptied account.");
+  }
+
+  const owned = [], blank = [];
+  for (let i = 0; i < existingRows.length; i++) {
+    const row = firstRow + i;
+    const a = String(existingRows[i][0] || "").trim();
+    if (a === acct) owned.push({ row: row, ticker: String(existingRows[i][2] || "").trim() });
+    else if (!a) blank.push(row);
+  }
+
+  if (!owned.length) return fail(`No rows on the Holdings tab carry the account name "${acct}".`);
+
+  const startRow = owned[0].row;
+  const ownedRows = {};
+  owned.forEach(o => { ownedRows[o.row] = true; });
+  const blankRows = {};
+  blank.forEach(r => { blankRows[r] = true; });
+
+  // The destination must be a contiguous run we are allowed to write into.
+  const needed = positions.length;
+  for (let r = startRow; r < startRow + needed; r++) {
+    if (r > lastRow) return fail(`Need ${needed} rows from row ${startRow}, but the grid ends at ${lastRow}.`);
+    if (!ownedRows[r] && !blankRows[r]) {
+      return fail(`Row ${r} belongs to another account, so the ${acct} block cannot be ` +
+                  `rewritten in place. Move the ${acct} rows together and re-run.`);
+    }
+  }
+
+  const writes = positions.map((spec, i) => ({ row: startRow + i, spec: spec }));
+
+  // Owned rows past the new block are stale and get cleared.
+  const clears = [], removed = [];
+  owned.forEach(o => {
+    if (o.row < startRow + needed) return;
+    clears.push(o.row);
+    if (o.ticker) removed.push(o.ticker);
+  });
+
+  const shrinkRatio = owned.length ? (owned.length - needed) / owned.length : 0;
+
+  return { ok: true, reason: "", startRow: startRow, writes: writes,
+           clears: clears, removed: removed, shrinkRatio: shrinkRatio };
 }
 
 /**
@@ -2613,90 +2708,123 @@ function _fetchFlexStatement() {
  * ------------------------------------------------------------------ */
 
 /**
- * Menu action: refreshes this account's rows on the Brokerage Holdings tab.
+ * Menu action: rebuilds this account's block on the Brokerage Holdings tab.
+ *
+ * Column B is never written. In the stock layout it is a plain text category;
+ * many users replace it with their own classification formula, and the sync has
+ * no business overwriting either.
  *
  * @param {SpreadsheetApp.Spreadsheet} [ss_inject]
  * @param {boolean} [silent=false]
- * @returns {{updated: number, added: number, zeroed: number, notes: Array<string>}}
+ * @returns {{written: number, cleared: number, notes: Array<string>}}
  */
 function syncIbkrPositions(ss_inject, silent = false) {
   const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName("Brokerage Holdings");
   const props = PropertiesService.getDocumentProperties();
   const accountName = props.getProperty(FLEX_PROP_ACCOUNT);
+  const ui = silent ? null : SpreadsheetApp.getUi();
 
-  if (!sheet) return { updated: 0, added: 0, zeroed: 0, notes: ["Brokerage Holdings tab not found."] };
-  if (!accountName) return { updated: 0, added: 0, zeroed: 0, notes: ["IBKR Flex is not configured."] };
+  const bail = notes => ({ written: 0, cleared: 0, notes: notes });
+
+  if (!sheet) return bail(["Brokerage Holdings tab not found."]);
+  if (!accountName) return bail(["IBKR Flex is not configured."]);
 
   const headerProblems = _auditHeaders(ss);
   if (headerProblems.length) {
-    if (!silent) SpreadsheetApp.getUi().alert("🛑 Sync aborted — Holdings headers don't match the expected layout.");
-    return { updated: 0, added: 0, zeroed: 0, notes: headerProblems };
+    const msg = ["🛑 Sync aborted — the Holdings header row doesn't match the expected layout.", ""]
+      .concat(headerProblems.map(h => "  • " + h))
+      .concat(["", "Sync writes by column position. Fix the headers first."]).join("\n");
+    if (ui) ui.alert(msg);
+    return bail(headerProblems);
   }
 
   const fetched = _fetchFlexStatement();
   if (!fetched.ok) {
-    if (!silent) SpreadsheetApp.getUi().alert(`🛑 IBKR Flex request failed.\n\n${fetched.error}`);
-    return { updated: 0, added: 0, zeroed: 0, notes: [fetched.error] };
+    if (ui) ui.alert(`🛑 IBKR Flex request failed.\n\n${fetched.error}`);
+    return bail([fetched.error]);
   }
 
   const positions = [];
+  let unparseable = 0;
   _extractFlexElements(fetched.xml, "OpenPosition").forEach(a => {
     const p = _normaliseFlexPosition(a);
-    if (p) positions.push(p);
+    if (p) positions.push(p); else unparseable++;
   });
   _extractFlexElements(fetched.xml, "CashReportCurrency").forEach(a => {
     const c = _normaliseFlexCash(a.currency, a.endingCash || a.endingSettledCash);
     if (c) positions.push(c);
   });
 
-  if (!positions.length) {
-    if (!silent) SpreadsheetApp.getUi().alert(
-      "⚠️ The Flex report contained no positions.\n\n" +
-      "Check that your Flex Query includes the Open Positions and Cash Report\n" +
-      "sections. Nothing was changed.");
-    return { updated: 0, added: 0, zeroed: 0, notes: ["No positions in Flex report"] };
+  // If the report carried positions we could not read, stop. Writing a partial
+  // block would silently drop whatever failed to parse.
+  if (unparseable > 0) {
+    const msg = [`🛑 Sync aborted — ${unparseable} position(s) in the Flex report could not be read.`, "",
+      "Usually the Flex Query is missing a field. In Client Portal, edit the query and",
+      "make sure the Open Positions section includes Quantity (Position), MarkPrice,",
+      "Multiplier, Symbol, UnderlyingSymbol, AssetCategory, Strike, Expiry and Put/Call.",
+      "", "Nothing was changed."].join("\n");
+    if (ui) ui.alert(msg);
+    return bail([`${unparseable} unparseable positions`]);
   }
 
   const rows = sheet.getRange(HOLDINGS_FIRST_ROW, 1, HOLDINGS_NUM_ROWS, 7).getValues();
-  const plan = _planHoldingsSync(rows, positions, accountName, HOLDINGS_FIRST_ROW, HOLDINGS_LAST_ROW);
+  const plan = _planBlockSync(rows, positions, accountName, HOLDINGS_FIRST_ROW, HOLDINGS_LAST_ROW);
 
-  const writeSpec = (row, spec, isNew) => {
-    if (isNew) {
-      sheet.getRange(row, 1).setValue(accountName);
-      sheet.getRange(row, 3).setValue(spec.ticker);
-      if (spec.currency) sheet.getRange(row, 7).setValue(spec.currency);
-    }
-    sheet.getRange(row, 4).setValue(spec.quantity);
-
-    if (spec.priceFormula) {
-      sheet.getRange(row, 5).setFormula(spec.priceFormula);
-    } else if (spec.isOption && spec.price !== null) {
-      // GOOGLEFINANCE can't price an OCC symbol, so the mark is written as a
-      // literal. This is precisely the hand-typing the sync exists to remove.
-      sheet.getRange(row, 5).setValue(spec.price);
-    }
-    // Non-option securities keep the canonical GOOGLEFINANCE formula in E, so
-    // the sheet stays live between syncs rather than freezing at the mark.
-  };
-
-  plan.updates.forEach(u => writeSpec(u.row, u.spec, false));
-  plan.additions.forEach(a => writeSpec(a.row, a.spec, true));
-  plan.zeroed.forEach(z => sheet.getRange(z.row, 4).setValue(0));
-
-  if (!silent) {
-    const lines = [`✅ Synced ${accountName} from IBKR.`, "",
-      `Positions updated: ${plan.updates.length}`,
-      `New positions added: ${plan.additions.length}`,
-      `Closed positions zeroed: ${plan.zeroed.length}`];
-    if (plan.zeroed.length) {
-      lines.push("", "Zeroed (rows kept so you can audit them):");
-      plan.zeroed.slice(0, 15).forEach(z => lines.push(`  • ${z.ticker}`));
-    }
-    if (plan.notes.length) lines.push("", "Notes:", ...plan.notes.map(n => "  • " + n));
-    SpreadsheetApp.getUi().alert(lines.join("\n"));
+  if (!plan.ok) {
+    if (ui) ui.alert(`🛑 Sync aborted.\n\n${plan.reason}`);
+    return bail([plan.reason]);
   }
 
-  return { updated: plan.updates.length, added: plan.additions.length,
-           zeroed: plan.zeroed.length, notes: plan.notes };
+  if (plan.shrinkRatio > SYNC_MAX_SHRINK) {
+    const pct = Math.round(plan.shrinkRatio * 100);
+    const question = [`⚠️ This sync would remove ${pct}% of the ${accountName} rows.`, "",
+      `Positions in the feed: ${positions.length}`,
+      `Rows to be cleared: ${plan.clears.length}`, "",
+      plan.removed.length ? "Tickers disappearing: " + plan.removed.slice(0, 20).join(", ") : "",
+      "", "A drop this large usually means an incomplete feed rather than closed",
+      "positions. Proceed anyway?"].join("\n");
+    if (!ui) return bail([`Refused: would remove ${pct}% of rows (silent mode)`]);
+    if (ui.alert("Unusually large change", question, ui.ButtonSet.YES_NO) !== ui.Button.YES) {
+      ui.alert("Cancelled — nothing was changed.");
+      return bail(["Cancelled by user"]);
+    }
+  }
+
+  plan.writes.forEach(w => {
+    const spec = w.spec;
+    sheet.getRange(w.row, 1).setValue(accountName);
+    sheet.getRange(w.row, 3).setValue(spec.ticker);
+    sheet.getRange(w.row, 4).setValue(spec.quantity);
+    sheet.getRange(w.row, 7).setValue(spec.currency || "");
+
+    if (spec.priceFormula) {
+      sheet.getRange(w.row, 5).setFormula(spec.priceFormula);
+    } else if (spec.isOption && spec.price !== null) {
+      // GOOGLEFINANCE cannot price an OCC symbol, so the mark is a literal.
+      // Refreshing it is the whole point of the sync.
+      sheet.getRange(w.row, 5).setValue(spec.price);
+    } else {
+      // Equities keep a live formula so the sheet stays current between syncs
+      // rather than freezing at the last statement's close.
+      sheet.getRange(w.row, 5).setFormula(_holdingsRowFormulas(w.row).E);
+    }
+    sheet.getRange(w.row, 6).setFormula(_holdingsRowFormulas(w.row).F);
+  });
+
+  plan.clears.forEach(r => sheet.getRange(r, 1, 1, 7).clearContent());
+
+  if (ui) {
+    const lines = [`✅ Rebuilt the ${accountName} block from IBKR.`, "",
+      `Rows written: ${plan.writes.length} (from row ${plan.startRow})`,
+      `Stale rows cleared: ${plan.clears.length}`];
+    if (plan.removed.length) {
+      lines.push("", "No longer held:", ...plan.removed.slice(0, 15).map(t => "  • " + t));
+    }
+    lines.push("", "Option marks are end-of-day from the Flex statement.",
+                   "Equities keep live GOOGLEFINANCE prices.");
+    ui.alert(lines.join("\n"));
+  }
+
+  return { written: plan.writes.length, cleared: plan.clears.length, notes: plan.notes || [] };
 }

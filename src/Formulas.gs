@@ -35,7 +35,7 @@ const LEDGER_HEADERS = ["Account", "Asset Class", "Currency", "Initial Capital",
   "Net Worth (USD)", "Status", "Remarks"];
 
 const HOLDINGS_HEADERS = ["Account Name", "Asset Category", "Ticker Symbol",
-  "Quantity", "Live Price", "Total Value"];
+  "Quantity", "Live Price", "Total Value (USD)"];
 
 /**
  * Pure helper: compares an actual header row against the canonical one.
@@ -47,9 +47,16 @@ function _verifyHeaders(actual, expected) {
   const problems = [];
   const col = n => String.fromCharCode(65 + n);
 
+  // A parenthetical annotation is a labelling choice, not a structural change:
+  // "Total Value" and "Total Value (USD)" describe the same column. Compare on
+  // the text before " (" so users can annotate headers freely, while a genuine
+  // mismatch ("Net Worth (USD)" sitting in the Status column) still fails.
+  const base = t => String(t === undefined || t === null ? "" : t)
+    .trim().replace(/\s*\(.*\)\s*$/, "").trim().toLowerCase();
+
   for (let i = 0; i < expected.length; i++) {
     const got = String((actual || [])[i] === undefined ? "" : actual[i]).trim();
-    if (got !== expected[i]) {
+    if (base(got) !== base(expected[i])) {
       problems.push(`${col(i)} should be "${expected[i]}" but is "${got}"`);
     }
   }
