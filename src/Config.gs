@@ -102,4 +102,9 @@ const CLOUD_SYNC_CONFIG = {
 const DASHBOARD_CONFIG = {
   secondaryCurrencies: ["CAD", "INR"], // ← Change these to your currencies
   fireTargetUSD: 10000000,             // ← Seeds Settings!B22 on first setup; edit B22 live thereafter
+
+  // Asset classes whose Current Value is computed from the Brokerage Holdings
+  // tab. Any class listed here is monitored for broken links and repaired.
+  // Add your own (e.g. "HSA", "529") if you track them the same way.
+  holdingsLinkedClasses: ["Brokerage", "Retirement", "Crypto", "Health Savings"],
 };

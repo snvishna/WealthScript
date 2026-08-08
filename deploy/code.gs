@@ -102,6 +102,11 @@ const CLOUD_SYNC_CONFIG = {
 const DASHBOARD_CONFIG = {
   secondaryCurrencies: ["CAD", "INR"], // ← Change these to your currencies
   fireTargetUSD: 10000000,             // ← Seeds Settings!B22 on first setup; edit B22 live thereafter
+
+  // Asset classes whose Current Value is computed from the Brokerage Holdings
+  // tab. Any class listed here is monitored for broken links and repaired.
+  // Add your own (e.g. "HSA", "529") if you track them the same way.
+  holdingsLinkedClasses: ["Brokerage", "Retirement", "Crypto", "Health Savings"],
 };
 /**
  * ==========================================
@@ -1758,29 +1763,43 @@ function _countManagedFormulas(ss) {
  * injecting a SUMPRODUCT there would evaluate to 0 and silently erase the
  * balance. So the rule is: broken only if holdings exist under that exact name.
  *
+ * A hardcoded ZERO is never intentional tracking. It is the fingerprint of a
+ * SUMPRODUCT that was already returning 0 (usually an account-name mismatch)
+ * at the moment something froze the column into literals. Those rows are
+ * reported as SUSPECT: repair cannot fix them, because there is nothing to link
+ * to until a human reconciles the names.
+ *
  * @param {Array<Array<*>>} ledgerRows - A..J values from LEDGER_FIRST_ROW
  * @param {Object<string,number>} holdingAccounts - account name -> holdings row count
  * @param {Array<string>} formulaCol - column E formulas, parallel to ledgerRows
- * @returns {{broken: Array, unlinked: Array, orphaned: Array}}
+ * @param {Array<string>} [linkedClasses] - asset classes sourced from Holdings
+ * @returns {{broken: Array, suspect: Array, unlinked: Array, orphaned: Array}}
  */
-function _classifyBrokerageRows(ledgerRows, holdingAccounts, formulaCol) {
-  const broken = [], unlinked = [];
+function _classifyBrokerageRows(ledgerRows, holdingAccounts, formulaCol, linkedClasses) {
+  const classes = linkedClasses || DASHBOARD_CONFIG.holdingsLinkedClasses || ["Brokerage"];
+  const broken = [], suspect = [], unlinked = [];
   const seen = {};
 
   for (let i = 0; i < ledgerRows.length; i++) {
-    if (String(ledgerRows[i][1]).trim() !== "Brokerage") continue;
+    const assetClass = String(ledgerRows[i][1]).trim();
+    if (classes.indexOf(assetClass) === -1) continue;
 
     const account = String(ledgerRows[i][0] || "").trim();
     const status = String(ledgerRows[i][9] || "").trim();
+    const value = ledgerRows[i][4];
     const row = LEDGER_FIRST_ROW + i;
     seen[account] = true;
 
     if (formulaCol[i]) continue;                       // linked — nothing to do
 
+    const base = { row: row, account: account, status: status, assetClass: assetClass, value: value };
+
     if (holdingAccounts[account]) {
-      broken.push({ row: row, account: account, status: status, holdings: holdingAccounts[account] });
+      broken.push(Object.assign({ holdings: holdingAccounts[account] }, base));
+    } else if (value === "" || value === null || Number(value) === 0) {
+      suspect.push(base);
     } else {
-      unlinked.push({ row: row, account: account, status: status });
+      unlinked.push(base);
     }
   }
 
@@ -1790,7 +1809,7 @@ function _classifyBrokerageRows(ledgerRows, holdingAccounts, formulaCol) {
     .filter(n => !seen[n])
     .map(n => ({ account: n, rows: holdingAccounts[n] }));
 
-  return { broken: broken, unlinked: unlinked, orphaned: orphaned };
+  return { broken: broken, suspect: suspect, unlinked: unlinked, orphaned: orphaned };
 }
 
 /**
@@ -1801,7 +1820,7 @@ function _classifyBrokerageRows(ledgerRows, holdingAccounts, formulaCol) {
 function _auditBrokerageLinks(ss) {
   const ledger = ss.getSheetByName("Dashboard & Ledger");
   const holdings = ss.getSheetByName("Brokerage Holdings");
-  if (!ledger) return { broken: [], unlinked: [], orphaned: [] };
+  if (!ledger) return { broken: [], suspect: [], unlinked: [], orphaned: [] };
 
   const holdingAccounts = {};
   if (holdings) {
@@ -1841,9 +1860,10 @@ function auditFormulaHealth(ss_inject) {
   return {
     // Only genuine damage blocks a snapshot. Unlinked and orphaned accounts are
     // reported for review but may well be intentional.
-    healthy: diff.ok && links.broken.length === 0,
+    healthy: diff.ok && links.broken.length === 0 && links.suspect.length === 0,
     regressions: diff.regressions,
     brokenLinks: links.broken,
+    suspect: links.suspect,
     unlinked: links.unlinked,
     orphaned: links.orphaned,
     counts: counts,
@@ -1880,12 +1900,20 @@ function _formatHealthReport(audit) {
       lines.push("");
     }
     if (audit.brokenLinks.length) {
-      lines.push("Brokerage rows with holdings but no link:");
+      lines.push("Rows with holdings but no link (Repair Formulas fixes these):");
       audit.brokenLinks.forEach(b => lines.push(
-        `  • Row ${b.row} — ${b.account} (${b.holdings} holdings row(s) waiting)`));
+        `  • Row ${b.row} — ${b.account} [${b.assetClass}] (${b.holdings} holdings row(s) waiting)`));
       lines.push("");
     }
-    lines.push("Run WealthScript > 🛠 Repair Formulas to restore them.");
+    if ((audit.suspect || []).length) {
+      lines.push("Rows frozen at 0 with no matching holdings — NEEDS YOUR ATTENTION:");
+      audit.suspect.forEach(x => lines.push(
+        `  • Row ${x.row} — ${x.account} [${x.assetClass}]. Counting as $0 in your net worth.`));
+      lines.push("    Repair cannot fix these: the account name likely doesn't match the");
+      lines.push("    Holdings tab. Reconcile the names, then run Repair Formulas.");
+      lines.push("");
+    }
+    if (audit.brokenLinks.length) lines.push("Run WealthScript > 🛠 Repair Formulas to restore the links above.");
   }
 
   if (notices.length) {
@@ -1968,7 +1996,10 @@ function repairFormulas(ss_inject, silent = false) {
   });
   links.unlinked.forEach(u => {
     preserved++;
-    details.push(`Row ${u.row} (${u.account}): kept manual value — no holdings tracked under this name`);
+    details.push(`Row ${u.row} (${u.account}): kept manual value ${u.value} — no holdings under this name`);
+  });
+  links.suspect.forEach(x => {
+    details.push(`⚠️ Row ${x.row} (${x.account}) frozen at 0 with no matching holdings — counting as $0. Fix the account name, then re-run Repair.`);
   });
   links.orphaned.forEach(o => {
     details.push(`⚠️ "${o.account}" has ${o.rows} holdings row(s) but no ledger row — not counted in net worth`);

@@ -18,6 +18,7 @@ function runAllTests() {
   test_formatHealthReport();
   test_healthReportSeparatesErrorsFromNotices();
   test_classifyBrokerageRows();
+  test_classifyAcrossAssetClasses();
   test_generateInsight();
   test_validatePATFormat();
   test_buildGistUrl();

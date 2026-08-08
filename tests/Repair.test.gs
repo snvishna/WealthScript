@@ -65,27 +65,30 @@ function test_formatHealthReport() {
 }
 
 function test_classifyBrokerageRows() {
-  //          A account                B class        ... J status (index 9)
-  const mk = (a, c, st) => [a, c, "", "", "", "", "", "", "", st];
+  //          A account                B class      ... E value (idx 4) ... J status (idx 9)
+  const mk = (a, c, e, st) => [a, c, "", "", e, "", "", "", "", st];
   const rows = [
-    mk("IBKR",     "Brokerage", "Active"),    // row 7  - linked
-    mk("Schwab",   "Brokerage", "Inactive"),  // row 8  - no formula, no holdings
-    mk("Fidelity", "Brokerage", "Active"),    // row 9  - no formula, no holdings
-    mk("Wealthfront","Brokerage","Active"),   // row 10 - no formula, HAS holdings
-    mk("Chase",    "Cash",      "Active")     // row 11 - not brokerage
+    mk("IBKR",        "Brokerage", "",     "Active"),   // row 7  - linked
+    mk("Schwab",      "Brokerage", 0,      "Inactive"), // row 8  - frozen 0, no holdings
+    mk("Fidelity",    "Brokerage", 48250,  "Active"),   // row 9  - real manual number
+    mk("Wealthfront", "Brokerage", 0,      "Active"),   // row 10 - no formula, HAS holdings
+    mk("Chase",       "Cash",      12000,  "Active")    // row 11 - not holdings-linked
   ];
   const holdings = { "IBKR": 25, "Wealthfront": 8, "TD Ameritrade": 4 };
   const formulas = ["=SUMPRODUCT(1)", "", "", "", ""];
 
-  const r = _classifyBrokerageRows(rows, holdings, formulas);
+  const r = _classifyBrokerageRows(rows, holdings, formulas, ["Brokerage"]);
 
   Assert.equal(r.broken.length, 1, 'classify: only the row with holdings counts as broken');
   Assert.equal(r.broken[0].account, "Wealthfront", 'classify: names the genuinely broken account');
   Assert.equal(r.broken[0].holdings, 8, 'classify: reports how many holdings rows are waiting');
 
-  Assert.equal(r.unlinked.length, 2, 'classify: manual-value brokerages are unlinked, not broken');
-  Assert.isTrue(r.unlinked.some(u => u.account === "Fidelity"), 'classify: Active manual account is not an error');
-  Assert.isTrue(r.unlinked.some(u => u.status === "Inactive"), 'classify: status carried through for review');
+  Assert.equal(r.suspect.length, 1, 'classify: a frozen 0 is damage, not a manual balance');
+  Assert.equal(r.suspect[0].account, "Schwab", 'classify: names the frozen-zero row');
+  Assert.equal(r.suspect[0].status, "Inactive", 'classify: status carried through for review');
+
+  Assert.equal(r.unlinked.length, 1, 'classify: a real number is an intentional manual balance');
+  Assert.equal(r.unlinked[0].account, "Fidelity", 'classify: manual balance left alone');
 
   Assert.equal(r.orphaned.length, 1, 'classify: holdings with no ledger row are flagged');
   Assert.equal(r.orphaned[0].account, "TD Ameritrade", 'classify: catches a renamed account');
@@ -101,4 +104,36 @@ function test_healthReportSeparatesErrorsFromNotices() {
   Assert.isTrue(rep.indexOf('✅') > -1, 'report: notices alone do not make the sheet unhealthy');
   Assert.isTrue(rep.indexOf('Fidelity') > -1, 'report: unlinked account surfaced as a notice');
   Assert.isTrue(rep.indexOf('not counted in your net worth') > -1, 'report: orphaned holdings explained in impact terms');
+}
+
+function test_classifyAcrossAssetClasses() {
+  const mk = (a, c, e, st) => [a, c, "", "", e, "", "", "", "", st];
+  const rows = [
+    mk("IBKR",     "Brokerage",  "",     "Active"),   // 7  linked
+    mk("Vanguard", "Retirement", 0,      "Active"),   // 8  retirement, HAS holdings -> broken
+    mk("Coinbase", "Crypto",     0,      "Active"),   // 9  crypto, HAS holdings -> broken
+    mk("Schwab",   "Brokerage",  0,      "Inactive"), // 10 frozen 0, no holdings -> suspect
+    mk("Fidelity", "Brokerage",  48250,  "Active"),   // 11 real manual number -> unlinked
+    mk("Keybank",  "Cash",       9000,   "Inactive")  // 12 cash, never linked -> ignored
+  ];
+  const holdings = { "IBKR": 25, "Vanguard": 12, "Coinbase": 3, "TD Ameritrade": 4 };
+  const formulas = ["=SUMPRODUCT(1)", "", "", "", "", ""];
+
+  const r = _classifyBrokerageRows(rows, holdings, formulas, ["Brokerage", "Retirement", "Crypto"]);
+
+  Assert.equal(r.broken.length, 2, 'classes: Retirement and Crypto rows are monitored, not just Brokerage');
+  Assert.isTrue(r.broken.some(b => b.assetClass === "Retirement"), 'classes: Retirement link checked');
+  Assert.isTrue(r.broken.some(b => b.assetClass === "Crypto"), 'classes: Crypto link checked');
+
+  Assert.equal(r.suspect.length, 1, 'classes: a literal 0 with no holdings is damage, not intent');
+  Assert.equal(r.suspect[0].account, "Schwab", 'classes: names the frozen-zero row');
+
+  Assert.equal(r.unlinked.length, 1, 'classes: a real manual number stays unlinked, not suspect');
+  Assert.equal(r.unlinked[0].account, "Fidelity", 'classes: manual balance preserved');
+
+  Assert.isTrue(!r.broken.concat(r.suspect, r.unlinked).some(x => x.account === "Keybank"),
+    'classes: Cash rows are never treated as holdings-linked');
+
+  Assert.equal(r.orphaned.length, 1, 'classes: orphaned holdings still detected');
+  Assert.equal(r.orphaned[0].account, "TD Ameritrade", 'classes: renamed account surfaced');
 }
