@@ -60,19 +60,24 @@ function buildSettingsTab(ss_inject) {
   sheet.getRange(20, 2).setNumberFormat("$#,##0");
   sheet.getRange(21, 2).setNumberFormat("0.00%");
 
-  sheet.getRange("A22").setValue("DASHBOARD CURRENCY CONFIG").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
+  styleRow(sheet.getRange("A22:B22"), THEME.kpiCardBg)
+    .setValues([["FIRE Target Net Worth (USD)", (DASHBOARD_CONFIG.fireTargetUSD || 3000000)]]);
+  sheet.getRange("B22").setNumberFormat("$#,##0");
+  sheet.getRange("B22").setNote("The dashboard FIRE Progress card and the Time-to-FIRE chart both read this cell live. Change it any time — no rebuild needed.");
+
+  sheet.getRange("A23").setValue("DASHBOARD CURRENCY CONFIG").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
   const currencyConfig = [
     ["Secondary Currency (Card 2)", (DASHBOARD_CONFIG.secondaryCurrencies[0] || "CAD")],
     ["Secondary Currency (Card 3)", (DASHBOARD_CONFIG.secondaryCurrencies[1] || "INR")]
   ];
-  const currRange = sheet.getRange(23, 1, currencyConfig.length, 2);
+  const currRange = sheet.getRange(24, 1, currencyConfig.length, 2);
   currRange.setValues(currencyConfig);
   styleRow(currRange, THEME.kpiCardBg);
-  sheet.getRange("B23").setNote("Examples: CAD, EUR, GBP, AUD, JPY, SGD, INR, MXN, CHF");
   sheet.getRange("B24").setNote("Examples: CAD, EUR, GBP, AUD, JPY, SGD, INR, MXN, CHF");
+  sheet.getRange("B25").setNote("Examples: CAD, EUR, GBP, AUD, JPY, SGD, INR, MXN, CHF");
 
-  sheet.getRange("A26").setValue("REAL ESTATE ZPID MAPPING").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
-  sheet.getRange("A27:B27")
+  sheet.getRange("A27").setValue("REAL ESTATE ZPID MAPPING").setFontWeight("bold").setFontSize(12).setFontColor(THEME.headerBg);
+  sheet.getRange("A28:B28")
     .setValues([["Account Name (Must match Dashboard exactly)", "ZPID"]])
     .setBackground(THEME.headerBg).setFontColor(THEME.headerText).setFontWeight("bold");
 
@@ -80,7 +85,7 @@ function buildSettingsTab(ss_inject) {
     ["Primary Residence", "12345678"],
     ["Investment Property 1", "87654321"]
   ];
-  sheet.getRange(28, 1, sampleMapping.length, 2).setValues(sampleMapping);
+  sheet.getRange(29, 1, sampleMapping.length, 2).setValues(sampleMapping);
 
   sheet.setColumnWidth(1, 350);
   sheet.setColumnWidth(2, 350);
@@ -98,6 +103,44 @@ function buildSettingsTab(ss_inject) {
  */
 function _buildBrokerageFormula(rowNum) {
   return `=SUMPRODUCT(('Brokerage Holdings'!$A$2:$A$200=A${rowNum})*N('Brokerage Holdings'!$F$2:$F$200))`;
+}
+
+/**
+ * Pure helper: builds a locale-aware abbreviated DISPLAY string formula for a KPI card.
+ *
+ * Google Sheets number formats can only scale by powers of 1,000 (each trailing comma
+ * divides by 1000). Crore (10^7) and Lakh (10^5) are NOT powers of 1000, so they are
+ * impossible to express as a number format. The scaling therefore has to happen inside
+ * the formula, which means these cells resolve to TEXT, not numbers.
+ *
+ * Consumers that need the numeric value must read the hidden helper cells (N2/N3/O2/O3)
+ * instead of the display cells. See _buildCardHelperFormulas().
+ *
+ * @param {string} settingsCell - A1 ref holding the currency code, e.g. "'Settings & Config'!B24"
+ * @param {string} valueCell - A1 ref holding the numeric value in that currency, e.g. "$N$2"
+ * @returns {string} The formula string
+ */
+function _buildAbbrDisplayFormula(settingsCell, valueCell) {
+  const SYM = { USD:'$', EUR:'€', GBP:'£', INR:'₹', JPY:'¥',
+                CAD:'CA$', AUD:'A$', SGD:'S$', CHF:'Fr', MXN:'MX$' };
+  const symIfs = Object.keys(SYM).map(c => `cur="${c}","${SYM[c]}"`).join(',');
+  // Currencies that use the Indian numbering system (lakh / crore).
+  const indianIfs = ['INR','PKR','LKR','NPR','BDT'].map(c => `cur="${c}"`).join(',');
+
+  return '=IFERROR(LET('
+    + `cur,UPPER(TRIM(${settingsCell})),`
+    + `v,${valueCell},`
+    + `sym,IFS(${symIfs},TRUE,cur&" "),`
+    + 'a,ABS(v),'
+    + `IF(OR(${indianIfs}),`
+    +   'IFS(a>=10000000,sym&TEXT(v/10000000,"0.#")&"Cr",'
+    +      'a>=100000,sym&TEXT(v/100000,"0.#")&"L",'
+    +      'TRUE,sym&TEXT(v,"#,##0")),'
+    +   'IFS(a>=1000000000,sym&TEXT(v/1000000000,"0.00")&"B",'
+    +      'a>=1000000,sym&TEXT(v/1000000,"0.00")&"M",'
+    +      'a>=1000,sym&TEXT(v/1000,"0")&"K",'
+    +      'TRUE,sym&TEXT(v,"0"))'
+    + ')),"—")';
 }
 
 function buildPortfolioTracker(ss_inject) {
@@ -150,30 +193,46 @@ function buildPortfolioTracker(ss_inject) {
   sheet.getRange(`${c0.val}3`).setFormula('=SUMIFS(H7:H5000,J7:J5000,"Active")')
     .setNumberFormat(USD_ABBR_FMT).setFontColor(s0.subFg).setFontSize(11);
 
-  const SETTINGS_CURRENCY_CELLS = ["'Settings & Config'!B23", "'Settings & Config'!B24"];
-  SETTINGS_CURRENCY_CELLS.slice(0, 2).forEach((settingsCell, idx) => {
+  // Hidden numeric backing cells (columns M/N/O). The visible KPI cards render TEXT
+  // because Indian-numbering abbreviations cannot be expressed as a number format;
+  // Snapshot.gs and Backup.gs read these numeric cells instead of the display cells.
+  const SETTINGS_CURRENCY_CELLS = ["'Settings & Config'!B24", "'Settings & Config'!B25"];
+  const HELPER_COLS = ["N", "O"];   // N = card 2, O = card 3
+  sheet.getRange("M1").setValue("⚙ INTERNAL — do not edit or delete")
+    .setFontColor(THEME.mutedText).setFontSize(8);
+
+  SETTINGS_CURRENCY_CELLS.forEach((settingsCell, idx) => {
     const sn = CARD_STYLES[idx + 1]; const cn = CARD_LAYOUT[idx + 1];
+    const hc = HELPER_COLS[idx];
+    const rateCell = `$M$${idx + 2}`;
+
+    sheet.getRange(`M${idx + 2}`)
+      .setFormula(`=IFERROR(GOOGLEFINANCE("CURRENCY:USD"&TRIM(UPPER(${settingsCell}))),1)`)
+      .setNumberFormat("0.000000");
+    sheet.getRange(`${hc}2`).setFormula(`=B2*${rateCell}`).setNumberFormat("#,##0.00");
+    sheet.getRange(`${hc}3`).setFormula(`=B3*${rateCell}`).setNumberFormat("#,##0.00");
+
     sheet.getRange(cn.bg).setBackground(sn.bg);
     sheet.getRange(`${cn.lbl}2`)
-      .setFormula(`="Net Worth ("&${settingsCell}&")"`)  
+      .setFormula(`="Net Worth ("&${settingsCell}&")"`)
       .setFontColor(sn.labelFg).setFontWeight("bold").setFontSize(9);
     sheet.getRange(`${cn.val}2`)
-      .setFormula(`=B2*IFERROR(GOOGLEFINANCE("CURRENCY:USD"&${settingsCell}),1)`)
-      .setNumberFormat(PLAIN_ABBR_FMT).setFontColor(sn.valueFg).setFontSize(14).setFontWeight("bold");
+      .setFormula(_buildAbbrDisplayFormula(settingsCell, `$${hc}$2`))
+      .setNumberFormat("@").setFontColor(sn.valueFg).setFontSize(14).setFontWeight("bold");
     sheet.getRange(`${cn.lbl}3`)
-      .setFormula(`="Gross Worth ("&${settingsCell}&")"`)  
+      .setFormula(`="Gross Worth ("&${settingsCell}&")"`)
       .setFontColor(sn.labelFg).setFontWeight("bold").setFontSize(9);
     sheet.getRange(`${cn.val}3`)
-      .setFormula(`=B3*IFERROR(GOOGLEFINANCE("CURRENCY:USD"&${settingsCell}),1)`)
-      .setNumberFormat(PLAIN_ABBR_FMT).setFontColor(sn.subFg).setFontSize(11);
+      .setFormula(_buildAbbrDisplayFormula(settingsCell, `$${hc}$3`))
+      .setNumberFormat("@").setFontColor(sn.subFg).setFontSize(11);
   });
+  sheet.hideColumns(13, 3);   // M, N, O
 
   sheet.setRowHeight(2, 38); sheet.setRowHeight(3, 28);
 
   const LIQUID_CLASSES = ['"Cash"','"Brokerage"','"Crypto"','"Receivable"'];
   const liquidParts = LIQUID_CLASSES.map(c => `SUMIFS(I7:I5000,J7:J5000,"Active",B7:B5000,${c})`).join('+');
-  const fireTarget  = DASHBOARD_CONFIG.fireTargetUSD || 3000000;
-  const fireLabel   = `🔥 FIRE Progress ($${(fireTarget / 1e6).toFixed(0)}M)`;
+  const FIRE_TARGET_CELL = "'Settings & Config'!$B$22";
 
   sheet.getRange("A4:C4").setBackground(THEME.quickStats.liquidBg);
   sheet.getRange("A4").setValue("🌊 Liquid Net Worth").setFontColor(THEME.quickStats.liquidFg).setFontWeight("bold").setFontSize(9);
@@ -186,8 +245,10 @@ function buildPortfolioTracker(ss_inject) {
     .setNumberFormat(USD_ABBR_FMT).setFontColor(THEME.quickStats.lockedFg).setFontSize(11).setFontWeight("bold");
 
   sheet.getRange("H4:K4").setBackground(THEME.quickStats.fireBg);
-  sheet.getRange("H4").setValue(fireLabel).setFontColor(THEME.quickStats.fireFg).setFontWeight("bold").setFontSize(9);
-  sheet.getRange("I4").setFormula(`=IFERROR(SUMIFS(I7:I5000,J7:J5000,"Active")/${fireTarget},0)`)
+  sheet.getRange("H4").setFormula(
+      `="🔥 FIRE Progress ("&IF(${FIRE_TARGET_CELL}>=1000000,"$"&TEXT(${FIRE_TARGET_CELL}/1000000,"0.##")&"M","$"&TEXT(${FIRE_TARGET_CELL},"#,##0"))&")"`)
+    .setFontColor(THEME.quickStats.fireFg).setFontWeight("bold").setFontSize(9);
+  sheet.getRange("I4").setFormula(`=IFERROR(SUMIFS(I7:I5000,J7:J5000,"Active")/${FIRE_TARGET_CELL},0)`)
     .setNumberFormat("0.0%").setFontColor(THEME.quickStats.fireFg).setFontSize(11).setFontWeight("bold");
 
   sheet.setRowHeight(4, 28);

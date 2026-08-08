@@ -12,7 +12,7 @@ A privacy-first, code-driven wealth tracker built entirely inside Google Sheets 
 * **Professional KPI Banner** — Dark-themed title row with 3 live-computed cards:
   * **Card 1 (USD):** Net Worth and Gross Worth via `SUMIFS` over your active accounts.
   * **Cards 2 & 3 (Configurable):** Any two secondary currencies (default: CAD, INR). Change them in the **Settings & Config** tab — the dashboard updates instantly via `GOOGLEFINANCE`.
-* **Abbreviated Number Formats** — Values display as `$1.55M`, `CA$320K`, `₹25M` for at-a-glance readability.
+* **Locale-Aware Abbreviated Formats** — Values display as `$1.55M`, `CA$320K`, and — for Indian-numbering currencies (INR, PKR, LKR, NPR, BDT) — `₹39Cr` / `₹4.5L` rather than millions. Cards 2 & 3 render as *text*; their numeric values live in hidden helper columns `M:O`, which the snapshot and backup engines read. Do not delete those columns.
 * **Quick-Stats Row** — 🌊 Liquid Net Worth, 🔒 Locked Net Worth, and 🔥 FIRE Progress (%) — all as live formulas.
 * **Color-Coded Asset Classes** — 10 distinct background colors auto-applied to Cash, Brokerage, Crypto, Retirement, Health Savings, Real Estate, Commodity, Insurance, Receivable, and Liability rows.
 * **Conditional Formatting** — Negative net worth cells are highlighted red.
@@ -116,9 +116,10 @@ From the **WealthScript** menu, click **☁️ Force Cloud Backup** to trigger b
 | FIRE & Cash Flow | B19 | Target Monthly FIRE Budget (USD) | `$20,000` |
 | FIRE & Cash Flow | B20 | Estimated Monthly Rental Income (USD) | `$0` |
 | FIRE & Cash Flow | B21 | Annual Portfolio Return Rate | `7.00%` |
-| Dashboard Currency | B23 | Secondary Currency (Card 2) | `CAD` |
-| Dashboard Currency | B24 | Secondary Currency (Card 3) | `INR` |
-| ZPID Mapping | A28:B44 | Property Name → ZPID pairs | sample data |
+| FIRE & Cash Flow | B22 | **FIRE Target Net Worth (USD)** | `$10,000,000` |
+| Dashboard Currency | B24 | Secondary Currency (Card 2) | `CAD` |
+| Dashboard Currency | B25 | Secondary Currency (Card 3) | `INR` |
+| ZPID Mapping | A29:B45 | Property Name → ZPID pairs | sample data |
 
 ### Phase 4: Enable Native Tables & Grouping
 1. On `Dashboard & Ledger`, select all data rows (Row 7+).
@@ -152,7 +153,7 @@ Edit the `DASHBOARD_CONFIG` constant in `code.gs`:
 ```javascript
 const DASHBOARD_CONFIG = {
   secondaryCurrencies: ["CAD", "INR"], // Any GOOGLEFINANCE code: EUR, GBP, AUD…
-  fireTargetUSD: 3000000,
+  fireTargetUSD: 10000000,
 };
 ```
 Or change them live in the **Settings & Config** tab (rows B14/B15) — the dashboard references those cells directly.
@@ -182,6 +183,7 @@ The repository includes an isolated unit test suite with **52 assertions across 
 | `test_driveBackupPruning` | Pruning threshold logic for backup file management |
 | `test_currencySymbol` | Currency code → symbol mapping (10 codes + unknown fallback) |
 | `test_abbrFmt` | Abbreviated number format string generation |
+| `test_buildAbbrDisplayFormula` | Locale-aware KPI display formula (crore/lakh vs. M/K) |
 | `test_generateInsight` | Snapshot auto-commentary (positive, negative, zero delta, first snapshot) |
 
 **To run:** Open `tests.gs` in the Apps Script editor → select `runAllTests` → click ▶ Run → check View → Logs.

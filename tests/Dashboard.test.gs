@@ -62,3 +62,29 @@ function test_generateInsight() {
   Assert.isTrue(flat.includes('increased'), 'insight: zero delta treated as increase');
   Assert.isTrue(flat.includes('$0'), 'insight: zero delta formatted as $0');
 }
+
+
+/**
+ * Shape contract for _buildAbbrDisplayFormula (pure — no Sheets calls).
+ * Guards the two properties that matter: Indian-numbering currencies scale by
+ * 10^7 / 10^5 with Cr/L suffixes; everything else by 10^9 / 10^6 / 10^3.
+ */
+function test_buildAbbrDisplayFormula() {
+  const f = _buildAbbrDisplayFormula("'Settings & Config'!B25", "$O$2");
+
+  Assert.isTrue(f.indexOf('$O$2') > -1, 'abbrDisplay: reads the numeric helper cell, not B2');
+  Assert.isTrue(f.indexOf("'Settings & Config'!B25") > -1, 'abbrDisplay: reads currency from Settings');
+
+  Assert.isTrue(f.indexOf('cur="INR"') > -1, 'abbrDisplay: INR routed to Indian numbering');
+  Assert.isTrue(f.indexOf('cur="BDT"') > -1, 'abbrDisplay: BDT routed to Indian numbering');
+  Assert.isTrue(f.indexOf('v/10000000') > -1, 'abbrDisplay: crore divides by 10^7');
+  Assert.isTrue(f.indexOf('"Cr"') > -1, 'abbrDisplay: crore suffix present');
+  Assert.isTrue(f.indexOf('v/100000,') > -1, 'abbrDisplay: lakh divides by 10^5');
+
+  Assert.isTrue(f.indexOf('v/1000000000') > -1, 'abbrDisplay: billions branch present');
+  Assert.isTrue(f.indexOf('"M"') > -1, 'abbrDisplay: millions suffix present');
+  Assert.isTrue(f.indexOf('"K"') > -1, 'abbrDisplay: thousands suffix present');
+
+  Assert.isTrue(f.indexOf('"\u20B9"') > -1, 'abbrDisplay: INR symbol included');
+  Assert.isTrue(f.indexOf('TRUE,cur&" "') > -1, 'abbrDisplay: unknown currency falls back to the code');
+}
