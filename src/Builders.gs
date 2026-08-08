@@ -160,7 +160,6 @@ function buildPortfolioTracker(ss_inject) {
   sheet.setRowHeight(1, 44);
 
   const USD_ABBR_FMT = '[>999999]"$"0.00,,"M";[>999]"$"0,"K";"$"0';
-  const PLAIN_ABBR_FMT = '[>999999]0.00,,"M";[>999]0,"K";0.00';
 
   const currencySymbol = (code) => {
     const SYM = { USD:'$', EUR:'€', GBP:'£', INR:'₹', JPY:'¥',
@@ -196,60 +195,39 @@ function buildPortfolioTracker(ss_inject) {
   // Hidden numeric backing cells (columns M/N/O). The visible KPI cards render TEXT
   // because Indian-numbering abbreviations cannot be expressed as a number format;
   // Snapshot.gs and Backup.gs read these numeric cells instead of the display cells.
-  const SETTINGS_CURRENCY_CELLS = ["'Settings & Config'!B24", "'Settings & Config'!B25"];
-  const HELPER_COLS = ["N", "O"];   // N = card 2, O = card 3
+  // All formulas come from Formulas.gs so the builder and repairFormulas()
+  // can never drift apart.
+  const FIXED = _ledgerFixedFormulas();
+  Object.keys(FIXED).forEach(a1 => sheet.getRange(a1).setFormula(FIXED[a1]));
+
   sheet.getRange("M1").setValue("⚙ INTERNAL — do not edit or delete")
     .setFontColor(THEME.mutedText).setFontSize(8);
+  sheet.getRange("M2:M3").setNumberFormat("0.000000");
+  sheet.getRange("N2:O3").setNumberFormat("#,##0.00");
 
-  SETTINGS_CURRENCY_CELLS.forEach((settingsCell, idx) => {
-    const sn = CARD_STYLES[idx + 1]; const cn = CARD_LAYOUT[idx + 1];
-    const hc = HELPER_COLS[idx];
-    const rateCell = `$M$${idx + 2}`;
-
-    sheet.getRange(`M${idx + 2}`)
-      .setFormula(`=IFERROR(GOOGLEFINANCE("CURRENCY:USD"&TRIM(UPPER(${settingsCell}))),1)`)
-      .setNumberFormat("0.000000");
-    sheet.getRange(`${hc}2`).setFormula(`=B2*${rateCell}`).setNumberFormat("#,##0.00");
-    sheet.getRange(`${hc}3`).setFormula(`=B3*${rateCell}`).setNumberFormat("#,##0.00");
-
+  [1, 2].forEach(idx => {
+    const sn = CARD_STYLES[idx]; const cn = CARD_LAYOUT[idx];
     sheet.getRange(cn.bg).setBackground(sn.bg);
-    sheet.getRange(`${cn.lbl}2`)
-      .setFormula(`="Net Worth ("&${settingsCell}&")"`)
-      .setFontColor(sn.labelFg).setFontWeight("bold").setFontSize(9);
-    sheet.getRange(`${cn.val}2`)
-      .setFormula(_buildAbbrDisplayFormula(settingsCell, `$${hc}$2`))
-      .setNumberFormat("@").setFontColor(sn.valueFg).setFontSize(14).setFontWeight("bold");
-    sheet.getRange(`${cn.lbl}3`)
-      .setFormula(`="Gross Worth ("&${settingsCell}&")"`)
-      .setFontColor(sn.labelFg).setFontWeight("bold").setFontSize(9);
-    sheet.getRange(`${cn.val}3`)
-      .setFormula(_buildAbbrDisplayFormula(settingsCell, `$${hc}$3`))
-      .setNumberFormat("@").setFontColor(sn.subFg).setFontSize(11);
+    sheet.getRange(`${cn.lbl}2`).setFontColor(sn.labelFg).setFontWeight("bold").setFontSize(9);
+    sheet.getRange(`${cn.val}2`).setNumberFormat("@").setFontColor(sn.valueFg).setFontSize(14).setFontWeight("bold");
+    sheet.getRange(`${cn.lbl}3`).setFontColor(sn.labelFg).setFontWeight("bold").setFontSize(9);
+    sheet.getRange(`${cn.val}3`).setNumberFormat("@").setFontColor(sn.subFg).setFontSize(11);
   });
   sheet.hideColumns(13, 3);   // M, N, O
 
   sheet.setRowHeight(2, 38); sheet.setRowHeight(3, 28);
 
-  const LIQUID_CLASSES = ['"Cash"','"Brokerage"','"Crypto"','"Receivable"'];
-  const liquidParts = LIQUID_CLASSES.map(c => `SUMIFS(I7:I5000,J7:J5000,"Active",B7:B5000,${c})`).join('+');
-  const FIRE_TARGET_CELL = "'Settings & Config'!$B$22";
-
   sheet.getRange("A4:C4").setBackground(THEME.quickStats.liquidBg);
   sheet.getRange("A4").setValue("🌊 Liquid Net Worth").setFontColor(THEME.quickStats.liquidFg).setFontWeight("bold").setFontSize(9);
-  sheet.getRange("B4").setFormula(`=${liquidParts}`)
-    .setNumberFormat(USD_ABBR_FMT).setFontColor(THEME.quickStats.liquidFg).setFontSize(11).setFontWeight("bold");
+  sheet.getRange("B4").setNumberFormat(USD_ABBR_FMT).setFontColor(THEME.quickStats.liquidFg).setFontSize(11).setFontWeight("bold");
 
   sheet.getRange("D4:G4").setBackground(THEME.quickStats.lockedBg);
   sheet.getRange("D4").setValue("🔒 Locked Net Worth").setFontColor(THEME.quickStats.lockedFg).setFontWeight("bold").setFontSize(9);
-  sheet.getRange("E4").setFormula(`=SUMIFS(I7:I5000,J7:J5000,"Active")-(${liquidParts})`)
-    .setNumberFormat(USD_ABBR_FMT).setFontColor(THEME.quickStats.lockedFg).setFontSize(11).setFontWeight("bold");
+  sheet.getRange("E4").setNumberFormat(USD_ABBR_FMT).setFontColor(THEME.quickStats.lockedFg).setFontSize(11).setFontWeight("bold");
 
   sheet.getRange("H4:K4").setBackground(THEME.quickStats.fireBg);
-  sheet.getRange("H4").setFormula(
-      `="🔥 FIRE Progress ("&IF(${FIRE_TARGET_CELL}>=1000000,"$"&TEXT(${FIRE_TARGET_CELL}/1000000,"0.##")&"M","$"&TEXT(${FIRE_TARGET_CELL},"#,##0"))&")"`)
-    .setFontColor(THEME.quickStats.fireFg).setFontWeight("bold").setFontSize(9);
-  sheet.getRange("I4").setFormula(`=IFERROR(SUMIFS(I7:I5000,J7:J5000,"Active")/${FIRE_TARGET_CELL},0)`)
-    .setNumberFormat("0.0%").setFontColor(THEME.quickStats.fireFg).setFontSize(11).setFontWeight("bold");
+  sheet.getRange("H4").setFontColor(THEME.quickStats.fireFg).setFontWeight("bold").setFontSize(9);
+  sheet.getRange("I4").setNumberFormat("0.0%").setFontColor(THEME.quickStats.fireFg).setFontSize(11).setFontWeight("bold");
 
   sheet.setRowHeight(4, 28);
   sheet.getRange("A5:K5").setBackground(THEME.accentBar);
@@ -264,7 +242,7 @@ function buildPortfolioTracker(ss_inject) {
   sheet.setRowHeight(6, 36);
 
   sheet.getRange(7, 1, DEFAULT_PORTFOLIO_DATA.length, headers.length).setValues(DEFAULT_PORTFOLIO_DATA);
-  const NUM_ROWS = 70;
+  const NUM_ROWS = LEDGER_NUM_ROWS;
   for (let i = 0; i < DEFAULT_PORTFOLIO_DATA.length; i++) {
     if (DEFAULT_PORTFOLIO_DATA[i][1] === "Brokerage") {
       const r = i + 7;
@@ -279,10 +257,8 @@ function buildPortfolioTracker(ss_inject) {
 
   const exch = [], gross = [], net = [];
   for (let i = 0; i < NUM_ROWS; i++) {
-    const r = i + 7;
-    exch.push([`=IF(ISBLANK(C${r}),"",IF(TRIM(UPPER(C${r}))="USD",1,IFERROR(GOOGLEFINANCE("CURRENCY:"&TRIM(UPPER(C${r}))&"USD"),"Error")))` ]);
-    gross.push([`=IF(AND(ISNUMBER(E${r}),ISNUMBER(F${r})),E${r}*F${r},"")` ]);
-    net.push([`=IF(AND(ISNUMBER(H${r}),ISNUMBER(G${r})),H${r}-(MAX(0,E${r}-D${r})*F${r}*G${r}),"")` ]);
+    const f = _ledgerRowFormulas(i + LEDGER_FIRST_ROW);
+    exch.push([f.F]); gross.push([f.H]); net.push([f.I]);
   }
   sheet.getRange(7, 6, NUM_ROWS, 1).setFormulas(exch);
   sheet.getRange(7, 8, NUM_ROWS, 1).setFormulas(gross);
@@ -361,16 +337,13 @@ function buildHoldingsTab(ss_inject) {
   sheet.getRange(2, 1, sampleData.length, 4).setValues(sampleData);
 
   const numRows = 99;
-  const formulas = [];
+  const priceF = [], totalF = [];
   for (let i = 0; i < numRows; i++) {
-    let rowNum = i + 2;
-    formulas.push([
-      `=IF(ISBLANK(C${rowNum}), "", GOOGLEFINANCE(C${rowNum}, "price"))`, 
-      `=IF(AND(ISNUMBER(D${rowNum}), ISNUMBER(E${rowNum})), D${rowNum} * E${rowNum}, "")` 
-    ]);
+    const f = _holdingsRowFormulas(i + HOLDINGS_FIRST_ROW);
+    priceF.push([f.E]); totalF.push([f.F]);
   }
-  sheet.getRange(2, 5, numRows, 1).setFormulas(formulas.map(row => [row[0]]));
-  sheet.getRange(2, 6, numRows, 1).setFormulas(formulas.map(row => [row[1]]));
+  sheet.getRange(2, 5, numRows, 1).setFormulas(priceF);
+  sheet.getRange(2, 6, numRows, 1).setFormulas(totalF);
 
   sheet.getRange("E2:F100").setNumberFormat("$#,##0.00");
   sheet.setFrozenRows(1);

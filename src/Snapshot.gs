@@ -12,6 +12,25 @@ function captureSnapshot(ss_inject, silent = false) {
 
   if (!mainSheet || !logSheet) return;
 
+  // Integrity gate: a snapshot taken over damaged formulas freezes a stale net
+  // worth into permanent history. Refuse rather than record a bad reading.
+  const audit = auditFormulaHealth(ss);
+  if (!audit.healthy) {
+    const report = _formatHealthReport(audit);
+    Logger.log("Snapshot aborted — " + report);
+    if (!silent) {
+      const ui = SpreadsheetApp.getUi();
+      const choice = ui.alert(
+        "⚠️ Snapshot blocked",
+        report + "\n\nRecording a snapshot now would freeze incorrect values into your history.\n\nSnapshot anyway?",
+        ui.ButtonSet.YES_NO
+      );
+      if (choice !== ui.Button.YES) return { aborted: true, reason: report };
+    } else {
+      return { aborted: true, reason: report };
+    }
+  }
+
   const netUSD = mainSheet.getRange("B2").getValue();
   const grossUSD = mainSheet.getRange("B3").getValue();
   // BUGFIX: E2/H2 are the *display* cells (H2 is actually a label, not a value).

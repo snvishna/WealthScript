@@ -3,27 +3,70 @@
  */
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
-  ui.createMenu('WealthScript')
-      .addItem('🚀 Run First Time Setup', 'runFirstTimeSetup')
-      .addSeparator()
-      .addItem('📸 Log Snapshot & Cloud Sync', 'captureSnapshot')
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // Destructive builders are hidden once the workbook is live, so a stray click
+  // can never wipe a populated ledger. They stay reachable under Danger Zone.
+  const isSetUp = !!(ss.getSheetByName("Dashboard & Ledger") && ss.getSheetByName("Brokerage Holdings"));
+  const menu = ui.createMenu('WealthScript');
+
+  if (!isSetUp) {
+    menu.addItem('🚀 Run First Time Setup', 'runFirstTimeSetup').addSeparator();
+  }
+
+  menu.addItem('📸 Log Snapshot & Cloud Sync', 'captureSnapshot')
       .addItem('🔄 Refresh Real Estate Prices', 'updateRealEstatePrices')
       .addItem('📊 Update Visual Dashboards', 'updateVisualDashboards')
-      .addItem('💸 Rebuild Cash Flow Tab', 'buildCashFlowTab')
+      .addSeparator()
+      .addItem('🩺 Check Formula Health', 'checkFormulaHealth')
+      .addItem('🛠 Repair Formulas', 'repairFormulas')
+      .addItem('🧭 Migrate Sheet Layout', 'migrateSheetLayout')
       .addSeparator()
       .addItem('🔐 Setup GitHub Backup', 'setupGistWizard')
       .addItem('📁 Setup Google Drive Backup', 'setupDriveBackup')
-      .addItem('☁️ Force Cloud Backup', 'forceBackup')
-      .addToUi();
+      .addItem('☁️ Force Cloud Backup', 'forceBackup');
+
+  if (isSetUp) {
+    menu.addSeparator().addSubMenu(
+      ui.createMenu('⚠️ Danger Zone')
+        .addItem('💥 Rebuild ALL tabs (erases your data)', 'rebuildEverythingDestructive')
+        .addItem('💥 Rebuild Cash Flow tab (erases expenses)', 'rebuildCashFlowDestructive')
+    );
+  }
+
+  menu.addToUi();
 }
 
 /**
  * MASTER SETUP: Builds all tabs and sets up automated cron jobs.
  * @param {SpreadsheetApp.Spreadsheet} [ss_inject] - Optional target spreadsheet
  * @param {boolean} [silent=false] - Whether to suppress UI alerts
+ * @param {boolean} [force=false] - Bypass the populated-ledger guard
  */
-function runFirstTimeSetup(ss_inject, silent = false) {
+function runFirstTimeSetup(ss_inject, silent = false, force = false) {
   const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+
+  // Every builder below calls sheet.clear(). Refuse to run against a populated
+  // ledger unless explicitly forced via the Danger Zone menu.
+  if (!force) {
+    const existing = ss.getSheetByName("Dashboard & Ledger");
+    if (existing) {
+      const rows = existing.getRange(LEDGER_FIRST_ROW, 1, LEDGER_NUM_ROWS, 1).getValues();
+      if (_hasUserLedgerData(rows)) {
+        if (!silent) {
+          SpreadsheetApp.getUi().alert(
+            "🛑 Setup aborted — this workbook already contains your data.\n\n" +
+            "Running setup would erase every tab.\n\n" +
+            "You probably want one of these instead:\n" +
+            "  • 🛠 Repair Formulas — restore damaged formulas, keep your data\n" +
+            "  • 🧭 Migrate Sheet Layout — apply layout changes from a new version\n\n" +
+            "If you really do want to start over, use ⚠️ Danger Zone > Rebuild ALL tabs."
+          );
+        }
+        return;
+      }
+    }
+  }
   
   buildSettingsTab(ss);
   buildHoldingsTab(ss);      // must exist BEFORE buildPortfolioTracker injects SUMPRODUCT formulas

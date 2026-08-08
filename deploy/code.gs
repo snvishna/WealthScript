@@ -104,31 +104,239 @@ const DASHBOARD_CONFIG = {
   fireTargetUSD: 10000000,             // ← Seeds Settings!B22 on first setup; edit B22 live thereafter
 };
 /**
+ * ==========================================
+ * FORMULAS — SINGLE SOURCE OF TRUTH
+ * ==========================================
+ * Every formula WealthScript injects is defined here, exactly once.
+ *
+ * Both buildPortfolioTracker() (fresh setup) and repairFormulas() (recovery)
+ * read from these functions. Defining a formula in two places is how a builder
+ * and a repair routine silently drift apart, so don't inline formulas elsewhere.
+ *
+ * All functions here are PURE — no SpreadsheetApp calls — so they are unit
+ * testable without a live spreadsheet.
+ */
+
+const LEDGER_FIRST_ROW = 7;
+const LEDGER_NUM_ROWS = 70;
+const LEDGER_LAST_ROW = LEDGER_FIRST_ROW + LEDGER_NUM_ROWS - 1;   // 76
+
+const HOLDINGS_FIRST_ROW = 2;
+const HOLDINGS_NUM_ROWS = 99;
+const HOLDINGS_LAST_ROW = HOLDINGS_FIRST_ROW + HOLDINGS_NUM_ROWS - 1;  // 100
+
+const CFG = "'Settings & Config'";
+const FIRE_TARGET_CELL = `${CFG}!$B$22`;
+const CURRENCY_CELLS = [`${CFG}!B24`, `${CFG}!B25`];
+
+/** Asset classes counted as liquid on the dashboard quick-stats row. */
+const LIQUID_CLASSES = ["Cash", "Brokerage", "Crypto", "Receivable"];
+
+/**
+ * Pure helper: SUMIFS chain totalling the liquid asset classes.
+ * @returns {string} formula fragment (no leading '=')
+ */
+function _liquidSumifs() {
+  return LIQUID_CLASSES
+    .map(c => `SUMIFS(I7:I5000,J7:J5000,"Active",B7:B5000,"${c}")`)
+    .join('+');
+}
+
+/**
+ * Pure helper: links a dashboard row to the Brokerage Holdings tab.
+ * N() coerces empty strings in the Total Value column to 0, preventing #VALUE!
+ * errors that IFERROR would silently swallow (returning 0 instead of the sum).
+ * @param {number} rowNum - 1-indexed Dashboard row
+ * @returns {string}
+ */
+function _buildBrokerageFormula(rowNum) {
+  return `=SUMPRODUCT(('Brokerage Holdings'!$A$2:$A$200=A${rowNum})*N('Brokerage Holdings'!$F$2:$F$200))`;
+}
+
+/**
+ * Pure helper: locale-aware abbreviated DISPLAY string for a KPI card.
+ *
+ * Google Sheets number formats scale only by powers of 1,000 (each trailing
+ * comma divides by 1000). Crore (10^7) and Lakh (10^5) are NOT powers of 1000,
+ * so they cannot be expressed as a number format. Scaling therefore happens
+ * inside the formula, which means these cells resolve to TEXT, not numbers.
+ *
+ * Consumers needing the numeric value must read the hidden helper cells
+ * (N2/N3/O2/O3), never the display cells.
+ *
+ * @param {string} settingsCell - A1 ref holding the currency code
+ * @param {string} valueCell - A1 ref holding the numeric value in that currency
+ * @returns {string}
+ */
+function _buildAbbrDisplayFormula(settingsCell, valueCell) {
+  const SYM = { USD:'$', EUR:'€', GBP:'£', INR:'₹', JPY:'¥',
+                CAD:'CA$', AUD:'A$', SGD:'S$', CHF:'Fr', MXN:'MX$' };
+  const symIfs = Object.keys(SYM).map(c => `curr="${c}","${SYM[c]}"`).join(',');
+  // Currencies using the Indian numbering system (lakh / crore).
+  const indianIfs = ['INR','PKR','LKR','NPR','BDT'].map(c => `curr="${c}"`).join(',');
+
+  return '=IFERROR(LET('
+    + `curr,UPPER(TRIM(${settingsCell})),val,${valueCell},`
+    + `symb,IFS(${symIfs},TRUE,curr&" "),mag,ABS(val),`
+    + `IF(OR(${indianIfs}),`
+    +   'IFS(mag>=10000000,symb&TEXT(val/10000000,"0.#")&"Cr",'
+    +      'mag>=100000,symb&TEXT(val/100000,"0.#")&"L",'
+    +      'TRUE,symb&TEXT(val,"#,##0")),'
+    +   'IFS(mag>=1000000000,symb&TEXT(val/1000000000,"0.00")&"B",'
+    +      'mag>=1000000,symb&TEXT(val/1000000,"0.00")&"M",'
+    +      'mag>=1000,symb&TEXT(val/1000,"0")&"K",'
+    +      'TRUE,symb&TEXT(val,"0"))'
+    + ')),"—")';
+}
+
+/**
+ * Every fixed (non-repeating) formula cell on Dashboard & Ledger.
+ * @returns {Object<string,string>} map of A1 notation -> formula
+ */
+function _ledgerFixedFormulas() {
+  const liquid = _liquidSumifs();
+  const out = {
+    "B2": '=SUMIFS(I7:I5000,J7:J5000,"Active")',
+    "B3": '=SUMIFS(H7:H5000,J7:J5000,"Active")',
+    "B4": `=${liquid}`,
+    "E4": `=SUMIFS(I7:I5000,J7:J5000,"Active")-(${liquid})`,
+    "H4": `="🔥 FIRE Progress ("&IF(${FIRE_TARGET_CELL}>=1000000,"$"&TEXT(${FIRE_TARGET_CELL}/1000000,"0.##")&"M","$"&TEXT(${FIRE_TARGET_CELL},"#,##0"))&")"`,
+    "I4": `=IFERROR(SUMIFS(I7:I5000,J7:J5000,"Active")/${FIRE_TARGET_CELL},0)`
+  };
+
+  // Secondary currency cards: label, hidden FX rate, hidden numeric, display text.
+  const CARDS = [
+    { lbl: "D", val: "E", helper: "N", rate: "M2", rateRow: 2 },
+    { lbl: "H", val: "I", helper: "O", rate: "M3", rateRow: 3 }
+  ];
+
+  CARDS.forEach((c, idx) => {
+    const cur = CURRENCY_CELLS[idx];
+    out[c.rate] = `=IFERROR(GOOGLEFINANCE("CURRENCY:USD"&TRIM(UPPER(${cur}))),1)`;
+    out[`${c.helper}2`] = `=B2*$M$${c.rateRow}`;
+    out[`${c.helper}3`] = `=B3*$M$${c.rateRow}`;
+    out[`${c.lbl}2`] = `="Net Worth ("&${cur}&")"`;
+    out[`${c.lbl}3`] = `="Gross Worth ("&${cur}&")"`;
+    out[`${c.val}2`] = _buildAbbrDisplayFormula(cur, `$${c.helper}$2`);
+    out[`${c.val}3`] = _buildAbbrDisplayFormula(cur, `$${c.helper}$3`);
+  });
+
+  return out;
+}
+
+/**
+ * Per-row formulas for the Dashboard ledger grid.
+ * Column E is deliberately excluded — it is manual entry except on Brokerage
+ * rows, which are handled separately via _buildBrokerageFormula().
+ * @param {number} r - 1-indexed row
+ * @returns {Object<string,string>} map of column letter -> formula
+ */
+function _ledgerRowFormulas(r) {
+  return {
+    F: `=IF(ISBLANK(C${r}),"",IF(TRIM(UPPER(C${r}))="USD",1,IFERROR(GOOGLEFINANCE("CURRENCY:"&TRIM(UPPER(C${r}))&"USD"),"Error")))`,
+    H: `=IF(AND(ISNUMBER(E${r}),ISNUMBER(F${r})),E${r}*F${r},"")`,
+    I: `=IF(AND(ISNUMBER(H${r}),ISNUMBER(G${r})),H${r}-(MAX(0,E${r}-D${r})*F${r}*G${r}),"")`
+  };
+}
+
+/**
+ * Per-row formulas for the Brokerage Holdings grid.
+ * @param {number} r - 1-indexed row
+ * @returns {Object<string,string>} map of column letter -> formula
+ */
+function _holdingsRowFormulas(r) {
+  return {
+    E: `=IF(ISBLANK(C${r}), "", GOOGLEFINANCE(C${r}, "price"))`,
+    F: `=IF(AND(ISNUMBER(D${r}), ISNUMBER(E${r})), D${r} * E${r}, "")`
+  };
+}
+
+/**
+ * Ranges whose formula count is tracked for integrity checking.
+ * Column E on the ledger is excluded — its formula count legitimately varies
+ * with how many Brokerage accounts exist, so it gets a dedicated structural
+ * check instead (see _auditBrokerageLinks).
+ */
+function _managedRanges() {
+  return [
+    { sheet: "Dashboard & Ledger", a1: "B2:B4",  label: "KPI totals (USD)" },
+    { sheet: "Dashboard & Ledger", a1: "D2:E4",  label: "KPI card 2 + Locked Net Worth" },
+    { sheet: "Dashboard & Ledger", a1: "H2:I4",  label: "KPI card 3 + FIRE progress" },
+    { sheet: "Dashboard & Ledger", a1: "M2:O3",  label: "Hidden FX helper cells" },
+    { sheet: "Dashboard & Ledger", a1: `F${LEDGER_FIRST_ROW}:F${LEDGER_LAST_ROW}`, label: "Exchange Rate column" },
+    { sheet: "Dashboard & Ledger", a1: `H${LEDGER_FIRST_ROW}:I${LEDGER_LAST_ROW}`, label: "Gross / Net Worth columns" },
+    { sheet: "Brokerage Holdings", a1: `F${HOLDINGS_FIRST_ROW}:F${HOLDINGS_LAST_ROW}`, label: "Holdings Total Value column" }
+  ];
+}
+/**
  * Creates the custom menu in the spreadsheet UI.
  */
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
-  ui.createMenu('WealthScript')
-      .addItem('🚀 Run First Time Setup', 'runFirstTimeSetup')
-      .addSeparator()
-      .addItem('📸 Log Snapshot & Cloud Sync', 'captureSnapshot')
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // Destructive builders are hidden once the workbook is live, so a stray click
+  // can never wipe a populated ledger. They stay reachable under Danger Zone.
+  const isSetUp = !!(ss.getSheetByName("Dashboard & Ledger") && ss.getSheetByName("Brokerage Holdings"));
+  const menu = ui.createMenu('WealthScript');
+
+  if (!isSetUp) {
+    menu.addItem('🚀 Run First Time Setup', 'runFirstTimeSetup').addSeparator();
+  }
+
+  menu.addItem('📸 Log Snapshot & Cloud Sync', 'captureSnapshot')
       .addItem('🔄 Refresh Real Estate Prices', 'updateRealEstatePrices')
       .addItem('📊 Update Visual Dashboards', 'updateVisualDashboards')
-      .addItem('💸 Rebuild Cash Flow Tab', 'buildCashFlowTab')
+      .addSeparator()
+      .addItem('🩺 Check Formula Health', 'checkFormulaHealth')
+      .addItem('🛠 Repair Formulas', 'repairFormulas')
+      .addItem('🧭 Migrate Sheet Layout', 'migrateSheetLayout')
       .addSeparator()
       .addItem('🔐 Setup GitHub Backup', 'setupGistWizard')
       .addItem('📁 Setup Google Drive Backup', 'setupDriveBackup')
-      .addItem('☁️ Force Cloud Backup', 'forceBackup')
-      .addToUi();
+      .addItem('☁️ Force Cloud Backup', 'forceBackup');
+
+  if (isSetUp) {
+    menu.addSeparator().addSubMenu(
+      ui.createMenu('⚠️ Danger Zone')
+        .addItem('💥 Rebuild ALL tabs (erases your data)', 'rebuildEverythingDestructive')
+        .addItem('💥 Rebuild Cash Flow tab (erases expenses)', 'rebuildCashFlowDestructive')
+    );
+  }
+
+  menu.addToUi();
 }
 
 /**
  * MASTER SETUP: Builds all tabs and sets up automated cron jobs.
  * @param {SpreadsheetApp.Spreadsheet} [ss_inject] - Optional target spreadsheet
  * @param {boolean} [silent=false] - Whether to suppress UI alerts
+ * @param {boolean} [force=false] - Bypass the populated-ledger guard
  */
-function runFirstTimeSetup(ss_inject, silent = false) {
+function runFirstTimeSetup(ss_inject, silent = false, force = false) {
   const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+
+  // Every builder below calls sheet.clear(). Refuse to run against a populated
+  // ledger unless explicitly forced via the Danger Zone menu.
+  if (!force) {
+    const existing = ss.getSheetByName("Dashboard & Ledger");
+    if (existing) {
+      const rows = existing.getRange(LEDGER_FIRST_ROW, 1, LEDGER_NUM_ROWS, 1).getValues();
+      if (_hasUserLedgerData(rows)) {
+        if (!silent) {
+          SpreadsheetApp.getUi().alert(
+            "🛑 Setup aborted — this workbook already contains your data.\n\n" +
+            "Running setup would erase every tab.\n\n" +
+            "You probably want one of these instead:\n" +
+            "  • 🛠 Repair Formulas — restore damaged formulas, keep your data\n" +
+            "  • 🧭 Migrate Sheet Layout — apply layout changes from a new version\n\n" +
+            "If you really do want to start over, use ⚠️ Danger Zone > Rebuild ALL tabs."
+          );
+        }
+        return;
+      }
+    }
+  }
   
   buildSettingsTab(ss);
   buildHoldingsTab(ss);      // must exist BEFORE buildPortfolioTracker injects SUMPRODUCT formulas
@@ -654,7 +862,6 @@ function buildPortfolioTracker(ss_inject) {
   sheet.setRowHeight(1, 44);
 
   const USD_ABBR_FMT = '[>999999]"$"0.00,,"M";[>999]"$"0,"K";"$"0';
-  const PLAIN_ABBR_FMT = '[>999999]0.00,,"M";[>999]0,"K";0.00';
 
   const currencySymbol = (code) => {
     const SYM = { USD:'$', EUR:'€', GBP:'£', INR:'₹', JPY:'¥',
@@ -690,60 +897,39 @@ function buildPortfolioTracker(ss_inject) {
   // Hidden numeric backing cells (columns M/N/O). The visible KPI cards render TEXT
   // because Indian-numbering abbreviations cannot be expressed as a number format;
   // Snapshot.gs and Backup.gs read these numeric cells instead of the display cells.
-  const SETTINGS_CURRENCY_CELLS = ["'Settings & Config'!B24", "'Settings & Config'!B25"];
-  const HELPER_COLS = ["N", "O"];   // N = card 2, O = card 3
+  // All formulas come from Formulas.gs so the builder and repairFormulas()
+  // can never drift apart.
+  const FIXED = _ledgerFixedFormulas();
+  Object.keys(FIXED).forEach(a1 => sheet.getRange(a1).setFormula(FIXED[a1]));
+
   sheet.getRange("M1").setValue("⚙ INTERNAL — do not edit or delete")
     .setFontColor(THEME.mutedText).setFontSize(8);
+  sheet.getRange("M2:M3").setNumberFormat("0.000000");
+  sheet.getRange("N2:O3").setNumberFormat("#,##0.00");
 
-  SETTINGS_CURRENCY_CELLS.forEach((settingsCell, idx) => {
-    const sn = CARD_STYLES[idx + 1]; const cn = CARD_LAYOUT[idx + 1];
-    const hc = HELPER_COLS[idx];
-    const rateCell = `$M$${idx + 2}`;
-
-    sheet.getRange(`M${idx + 2}`)
-      .setFormula(`=IFERROR(GOOGLEFINANCE("CURRENCY:USD"&TRIM(UPPER(${settingsCell}))),1)`)
-      .setNumberFormat("0.000000");
-    sheet.getRange(`${hc}2`).setFormula(`=B2*${rateCell}`).setNumberFormat("#,##0.00");
-    sheet.getRange(`${hc}3`).setFormula(`=B3*${rateCell}`).setNumberFormat("#,##0.00");
-
+  [1, 2].forEach(idx => {
+    const sn = CARD_STYLES[idx]; const cn = CARD_LAYOUT[idx];
     sheet.getRange(cn.bg).setBackground(sn.bg);
-    sheet.getRange(`${cn.lbl}2`)
-      .setFormula(`="Net Worth ("&${settingsCell}&")"`)
-      .setFontColor(sn.labelFg).setFontWeight("bold").setFontSize(9);
-    sheet.getRange(`${cn.val}2`)
-      .setFormula(_buildAbbrDisplayFormula(settingsCell, `$${hc}$2`))
-      .setNumberFormat("@").setFontColor(sn.valueFg).setFontSize(14).setFontWeight("bold");
-    sheet.getRange(`${cn.lbl}3`)
-      .setFormula(`="Gross Worth ("&${settingsCell}&")"`)
-      .setFontColor(sn.labelFg).setFontWeight("bold").setFontSize(9);
-    sheet.getRange(`${cn.val}3`)
-      .setFormula(_buildAbbrDisplayFormula(settingsCell, `$${hc}$3`))
-      .setNumberFormat("@").setFontColor(sn.subFg).setFontSize(11);
+    sheet.getRange(`${cn.lbl}2`).setFontColor(sn.labelFg).setFontWeight("bold").setFontSize(9);
+    sheet.getRange(`${cn.val}2`).setNumberFormat("@").setFontColor(sn.valueFg).setFontSize(14).setFontWeight("bold");
+    sheet.getRange(`${cn.lbl}3`).setFontColor(sn.labelFg).setFontWeight("bold").setFontSize(9);
+    sheet.getRange(`${cn.val}3`).setNumberFormat("@").setFontColor(sn.subFg).setFontSize(11);
   });
   sheet.hideColumns(13, 3);   // M, N, O
 
   sheet.setRowHeight(2, 38); sheet.setRowHeight(3, 28);
 
-  const LIQUID_CLASSES = ['"Cash"','"Brokerage"','"Crypto"','"Receivable"'];
-  const liquidParts = LIQUID_CLASSES.map(c => `SUMIFS(I7:I5000,J7:J5000,"Active",B7:B5000,${c})`).join('+');
-  const FIRE_TARGET_CELL = "'Settings & Config'!$B$22";
-
   sheet.getRange("A4:C4").setBackground(THEME.quickStats.liquidBg);
   sheet.getRange("A4").setValue("🌊 Liquid Net Worth").setFontColor(THEME.quickStats.liquidFg).setFontWeight("bold").setFontSize(9);
-  sheet.getRange("B4").setFormula(`=${liquidParts}`)
-    .setNumberFormat(USD_ABBR_FMT).setFontColor(THEME.quickStats.liquidFg).setFontSize(11).setFontWeight("bold");
+  sheet.getRange("B4").setNumberFormat(USD_ABBR_FMT).setFontColor(THEME.quickStats.liquidFg).setFontSize(11).setFontWeight("bold");
 
   sheet.getRange("D4:G4").setBackground(THEME.quickStats.lockedBg);
   sheet.getRange("D4").setValue("🔒 Locked Net Worth").setFontColor(THEME.quickStats.lockedFg).setFontWeight("bold").setFontSize(9);
-  sheet.getRange("E4").setFormula(`=SUMIFS(I7:I5000,J7:J5000,"Active")-(${liquidParts})`)
-    .setNumberFormat(USD_ABBR_FMT).setFontColor(THEME.quickStats.lockedFg).setFontSize(11).setFontWeight("bold");
+  sheet.getRange("E4").setNumberFormat(USD_ABBR_FMT).setFontColor(THEME.quickStats.lockedFg).setFontSize(11).setFontWeight("bold");
 
   sheet.getRange("H4:K4").setBackground(THEME.quickStats.fireBg);
-  sheet.getRange("H4").setFormula(
-      `="🔥 FIRE Progress ("&IF(${FIRE_TARGET_CELL}>=1000000,"$"&TEXT(${FIRE_TARGET_CELL}/1000000,"0.##")&"M","$"&TEXT(${FIRE_TARGET_CELL},"#,##0"))&")"`)
-    .setFontColor(THEME.quickStats.fireFg).setFontWeight("bold").setFontSize(9);
-  sheet.getRange("I4").setFormula(`=IFERROR(SUMIFS(I7:I5000,J7:J5000,"Active")/${FIRE_TARGET_CELL},0)`)
-    .setNumberFormat("0.0%").setFontColor(THEME.quickStats.fireFg).setFontSize(11).setFontWeight("bold");
+  sheet.getRange("H4").setFontColor(THEME.quickStats.fireFg).setFontWeight("bold").setFontSize(9);
+  sheet.getRange("I4").setNumberFormat("0.0%").setFontColor(THEME.quickStats.fireFg).setFontSize(11).setFontWeight("bold");
 
   sheet.setRowHeight(4, 28);
   sheet.getRange("A5:K5").setBackground(THEME.accentBar);
@@ -758,7 +944,7 @@ function buildPortfolioTracker(ss_inject) {
   sheet.setRowHeight(6, 36);
 
   sheet.getRange(7, 1, DEFAULT_PORTFOLIO_DATA.length, headers.length).setValues(DEFAULT_PORTFOLIO_DATA);
-  const NUM_ROWS = 70;
+  const NUM_ROWS = LEDGER_NUM_ROWS;
   for (let i = 0; i < DEFAULT_PORTFOLIO_DATA.length; i++) {
     if (DEFAULT_PORTFOLIO_DATA[i][1] === "Brokerage") {
       const r = i + 7;
@@ -773,10 +959,8 @@ function buildPortfolioTracker(ss_inject) {
 
   const exch = [], gross = [], net = [];
   for (let i = 0; i < NUM_ROWS; i++) {
-    const r = i + 7;
-    exch.push([`=IF(ISBLANK(C${r}),"",IF(TRIM(UPPER(C${r}))="USD",1,IFERROR(GOOGLEFINANCE("CURRENCY:"&TRIM(UPPER(C${r}))&"USD"),"Error")))` ]);
-    gross.push([`=IF(AND(ISNUMBER(E${r}),ISNUMBER(F${r})),E${r}*F${r},"")` ]);
-    net.push([`=IF(AND(ISNUMBER(H${r}),ISNUMBER(G${r})),H${r}-(MAX(0,E${r}-D${r})*F${r}*G${r}),"")` ]);
+    const f = _ledgerRowFormulas(i + LEDGER_FIRST_ROW);
+    exch.push([f.F]); gross.push([f.H]); net.push([f.I]);
   }
   sheet.getRange(7, 6, NUM_ROWS, 1).setFormulas(exch);
   sheet.getRange(7, 8, NUM_ROWS, 1).setFormulas(gross);
@@ -855,16 +1039,13 @@ function buildHoldingsTab(ss_inject) {
   sheet.getRange(2, 1, sampleData.length, 4).setValues(sampleData);
 
   const numRows = 99;
-  const formulas = [];
+  const priceF = [], totalF = [];
   for (let i = 0; i < numRows; i++) {
-    let rowNum = i + 2;
-    formulas.push([
-      `=IF(ISBLANK(C${rowNum}), "", GOOGLEFINANCE(C${rowNum}, "price"))`, 
-      `=IF(AND(ISNUMBER(D${rowNum}), ISNUMBER(E${rowNum})), D${rowNum} * E${rowNum}, "")` 
-    ]);
+    const f = _holdingsRowFormulas(i + HOLDINGS_FIRST_ROW);
+    priceF.push([f.E]); totalF.push([f.F]);
   }
-  sheet.getRange(2, 5, numRows, 1).setFormulas(formulas.map(row => [row[0]]));
-  sheet.getRange(2, 6, numRows, 1).setFormulas(formulas.map(row => [row[1]]));
+  sheet.getRange(2, 5, numRows, 1).setFormulas(priceF);
+  sheet.getRange(2, 6, numRows, 1).setFormulas(totalF);
 
   sheet.getRange("E2:F100").setNumberFormat("$#,##0.00");
   sheet.setFrozenRows(1);
@@ -1175,6 +1356,25 @@ function captureSnapshot(ss_inject, silent = false) {
   const configSheet = ss.getSheetByName("Settings & Config");
 
   if (!mainSheet || !logSheet) return;
+
+  // Integrity gate: a snapshot taken over damaged formulas freezes a stale net
+  // worth into permanent history. Refuse rather than record a bad reading.
+  const audit = auditFormulaHealth(ss);
+  if (!audit.healthy) {
+    const report = _formatHealthReport(audit);
+    Logger.log("Snapshot aborted — " + report);
+    if (!silent) {
+      const ui = SpreadsheetApp.getUi();
+      const choice = ui.alert(
+        "⚠️ Snapshot blocked",
+        report + "\n\nRecording a snapshot now would freeze incorrect values into your history.\n\nSnapshot anyway?",
+        ui.ButtonSet.YES_NO
+      );
+      if (choice !== ui.Button.YES) return { aborted: true, reason: report };
+    } else {
+      return { aborted: true, reason: report };
+    }
+  }
 
   const netUSD = mainSheet.getRange("B2").getValue();
   const grossUSD = mainSheet.getRange("B3").getValue();
@@ -1498,4 +1698,367 @@ function autoCreateGist(pat) {
     Logger.log("Error creating Gist: " + e.message);
     return "";
   }
+}
+/**
+ * ==========================================
+ * REPAIR, MIGRATION & FORMULA INTEGRITY
+ * ==========================================
+ * Non-destructive operations safe to run against a live sheet at any time.
+ * Nothing in this file calls sheet.clear().
+ */
+
+const INTEGRITY_PROP_KEY = "wealthscript.formulaBaseline";
+
+/* ------------------------------------------------------------------ *
+ * FORMULA INTEGRITY
+ * ------------------------------------------------------------------ */
+
+/**
+ * Pure helper: compares current formula counts against a stored baseline.
+ * A DROP is the signal — growth is fine (the user added accounts).
+ *
+ * @param {Object<string,number>} current - label -> formula count
+ * @param {Object<string,number>} baseline - label -> formula count
+ * @returns {{ok: boolean, regressions: Array<{label: string, was: number, now: number}>}}
+ */
+function _diffFormulaCounts(current, baseline) {
+  const regressions = [];
+  Object.keys(baseline || {}).forEach(label => {
+    const was = Number(baseline[label]) || 0;
+    const now = Number(current && current[label]) || 0;
+    if (now < was) regressions.push({ label: label, was: was, now: now });
+  });
+  return { ok: regressions.length === 0, regressions: regressions };
+}
+
+/**
+ * Counts non-empty formulas in each managed range.
+ * @param {SpreadsheetApp.Spreadsheet} ss
+ * @returns {Object<string,number>}
+ */
+function _countManagedFormulas(ss) {
+  const counts = {};
+  _managedRanges().forEach(spec => {
+    const sheet = ss.getSheetByName(spec.sheet);
+    if (!sheet) { counts[spec.label] = 0; return; }
+    let n = 0;
+    sheet.getRange(spec.a1).getFormulas().forEach(row => {
+      row.forEach(f => { if (f) n++; });
+    });
+    counts[spec.label] = n;
+  });
+  return counts;
+}
+
+/**
+ * Structural check: every row whose Asset Class is "Brokerage" MUST have a
+ * formula in its Current Value cell. Needs no baseline — the rule is absolute.
+ *
+ * @param {SpreadsheetApp.Spreadsheet} ss
+ * @returns {Array<{row: number, account: string}>} broken rows
+ */
+function _auditBrokerageLinks(ss) {
+  const sheet = ss.getSheetByName("Dashboard & Ledger");
+  if (!sheet) return [];
+
+  const values = sheet.getRange(LEDGER_FIRST_ROW, 1, LEDGER_NUM_ROWS, 2).getValues();
+  const formulas = sheet.getRange(LEDGER_FIRST_ROW, 5, LEDGER_NUM_ROWS, 1).getFormulas();
+
+  const broken = [];
+  for (let i = 0; i < values.length; i++) {
+    if (String(values[i][1]).trim() !== "Brokerage") continue;
+    if (!formulas[i][0]) {
+      broken.push({ row: LEDGER_FIRST_ROW + i, account: String(values[i][0]) });
+    }
+  }
+  return broken;
+}
+
+/**
+ * Full health check. Called on demand from the menu and defensively by
+ * captureSnapshot() before it writes a row.
+ *
+ * @param {SpreadsheetApp.Spreadsheet} [ss_inject]
+ * @returns {{healthy: boolean, regressions: Array, brokenLinks: Array, counts: Object, hadBaseline: boolean}}
+ */
+function auditFormulaHealth(ss_inject) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const counts = _countManagedFormulas(ss);
+  const brokenLinks = _auditBrokerageLinks(ss);
+
+  const props = PropertiesService.getDocumentProperties();
+  const raw = props.getProperty(INTEGRITY_PROP_KEY);
+  let baseline = null;
+  try { baseline = raw ? JSON.parse(raw) : null; } catch (e) { baseline = null; }
+
+  const diff = _diffFormulaCounts(counts, baseline);
+
+  return {
+    healthy: diff.ok && brokenLinks.length === 0,
+    regressions: diff.regressions,
+    brokenLinks: brokenLinks,
+    counts: counts,
+    hadBaseline: !!baseline
+  };
+}
+
+/** Records the current formula counts as the accepted baseline. */
+function _saveFormulaBaseline(ss) {
+  PropertiesService.getDocumentProperties()
+    .setProperty(INTEGRITY_PROP_KEY, JSON.stringify(_countManagedFormulas(ss)));
+}
+
+/** Pure helper: renders an audit result as a human-readable report. */
+function _formatHealthReport(audit) {
+  if (audit.healthy) {
+    return audit.hadBaseline
+      ? "✅ All managed formulas are intact."
+      : "✅ No damage detected. Baseline recorded — future checks compare against it.";
+  }
+
+  const lines = ["⚠️ Formula damage detected.", ""];
+  if (audit.regressions.length) {
+    lines.push("Formula count dropped in:");
+    audit.regressions.forEach(r => lines.push(`  • ${r.label} — was ${r.was}, now ${r.now}`));
+    lines.push("");
+  }
+  if (audit.brokenLinks.length) {
+    lines.push("Brokerage rows no longer linked to the Holdings tab:");
+    audit.brokenLinks.forEach(b => lines.push(`  • Row ${b.row} — ${b.account}`));
+    lines.push("");
+  }
+  lines.push("Run WealthScript > 🛠 Repair Formulas to restore them.");
+  return lines.join("\n");
+}
+
+/** Menu action: report formula health and record a baseline if none exists. */
+function checkFormulaHealth() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const audit = auditFormulaHealth(ss);
+  if (!audit.hadBaseline) _saveFormulaBaseline(ss);
+  SpreadsheetApp.getUi().alert(_formatHealthReport(audit));
+}
+
+/* ------------------------------------------------------------------ *
+ * REPAIR
+ * ------------------------------------------------------------------ */
+
+/**
+ * Re-injects every managed formula into a LIVE sheet without clearing anything.
+ *
+ * Safety rule: a cell holding a hardcoded literal in a manual-entry range is
+ * never overwritten. That protects deliberately pinned values — option contract
+ * prices on the Holdings tab, manually typed balances on the ledger — which a
+ * naive fill-down would destroy.
+ *
+ * @param {SpreadsheetApp.Spreadsheet} [ss_inject]
+ * @param {boolean} [silent=false]
+ * @returns {{restored: number, preserved: number, details: Array<string>}}
+ */
+function repairFormulas(ss_inject, silent = false) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const ledger = ss.getSheetByName("Dashboard & Ledger");
+  const holdings = ss.getSheetByName("Brokerage Holdings");
+
+  const details = [];
+  let restored = 0, preserved = 0;
+
+  if (!ledger || !holdings) {
+    return { restored: 0, preserved: 0, details: ["Required tabs not found — run First Time Setup."] };
+  }
+
+  // --- 1. Fixed KPI cells. These are always formulas; a literal here is damage.
+  const fixed = _ledgerFixedFormulas();
+  Object.keys(fixed).forEach(a1 => {
+    const cell = ledger.getRange(a1);
+    if (cell.getFormula() !== fixed[a1]) {
+      cell.setFormula(fixed[a1]);
+      restored++;
+      details.push(`Ledger ${a1} restored`);
+    }
+  });
+
+  // --- 2. Ledger per-row columns F, H, I. Always formulas.
+  for (let r = LEDGER_FIRST_ROW; r <= LEDGER_LAST_ROW; r++) {
+    const f = _ledgerRowFormulas(r);
+    ["F", "H", "I"].forEach(col => {
+      const cell = ledger.getRange(`${col}${r}`);
+      if (cell.getFormula() !== f[col]) { cell.setFormula(f[col]); restored++; }
+    });
+  }
+
+  // --- 3. Ledger column E: Brokerage rows only. Manual rows are left alone.
+  const meta = ledger.getRange(LEDGER_FIRST_ROW, 1, LEDGER_NUM_ROWS, 2).getValues();
+  for (let i = 0; i < meta.length; i++) {
+    const r = LEDGER_FIRST_ROW + i;
+    if (String(meta[i][1]).trim() !== "Brokerage") continue;
+    const want = _buildBrokerageFormula(r);
+    const cell = ledger.getRange(r, 5);
+    if (cell.getFormula() === want) continue;
+    if (cell.getFormula() === "" && cell.getValue() !== "") {
+      details.push(`Row ${r} (${meta[i][0]}): replaced a frozen literal with the live Holdings link`);
+    }
+    cell.setFormula(want);
+    restored++;
+  }
+
+  // --- 4. Holdings E (price) and F (total). E is skipped where the user has
+  //        pinned a literal — options and unquotable tickers have no live price.
+  for (let r = HOLDINGS_FIRST_ROW; r <= HOLDINGS_LAST_ROW; r++) {
+    const f = _holdingsRowFormulas(r);
+
+    const priceCell = holdings.getRange(r, 5);
+    const hasLiteralPrice = priceCell.getFormula() === "" && priceCell.getValue() !== "";
+    if (hasLiteralPrice) {
+      preserved++;
+      details.push(`Holdings E${r}: kept pinned price ${priceCell.getValue()}`);
+    } else if (priceCell.getFormula() !== f.E) {
+      priceCell.setFormula(f.E);
+      restored++;
+    }
+
+    const totalCell = holdings.getRange(r, 6);
+    if (totalCell.getFormula() !== f.F) { totalCell.setFormula(f.F); restored++; }
+  }
+
+  _saveFormulaBaseline(ss);
+
+  if (!silent) {
+    const msg = [`✅ Repair complete.`, ``,
+                 `Formulas restored: ${restored}`,
+                 `Pinned values preserved: ${preserved}`, ``]
+      .concat(details.length ? ["Notes:"].concat(details.slice(0, 25).map(d => "  • " + d)) : [])
+      .join("\n");
+    SpreadsheetApp.getUi().alert(msg);
+  }
+
+  return { restored: restored, preserved: preserved, details: details };
+}
+
+/* ------------------------------------------------------------------ *
+ * MIGRATION
+ * ------------------------------------------------------------------ */
+
+/**
+ * Brings a pre-existing sheet up to the current layout. Idempotent — running
+ * it twice is a no-op.
+ *
+ * Migration 1: insert Settings!B22 (FIRE Target), shifting currencies to B24/B25.
+ * Migration 2: create hidden FX helper cells M:O on the Dashboard.
+ *
+ * @param {SpreadsheetApp.Spreadsheet} [ss_inject]
+ * @param {boolean} [silent=false]
+ * @returns {{applied: Array<string>, skipped: Array<string>}}
+ */
+function migrateSheetLayout(ss_inject, silent = false) {
+  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const cfg = ss.getSheetByName("Settings & Config");
+  const ledger = ss.getSheetByName("Dashboard & Ledger");
+
+  const applied = [], skipped = [];
+
+  if (!cfg || !ledger) {
+    return { applied: [], skipped: ["Required tabs not found — run First Time Setup."] };
+  }
+
+  // --- Migration 1: FIRE target row ---
+  if (String(cfg.getRange("A22").getValue()).indexOf("FIRE Target") === 0) {
+    skipped.push("Settings!B22 FIRE target already present");
+  } else {
+    cfg.insertRowBefore(22);
+    cfg.getRange("A22:B22")
+      .setValues([["FIRE Target Net Worth (USD)", (DASHBOARD_CONFIG.fireTargetUSD || 3000000)]])
+      .setBackground(THEME.kpiCardBg).setVerticalAlignment("middle");
+    cfg.getRange("B22").setNumberFormat("$#,##0")
+      .setNote("The FIRE Progress card and the Time-to-FIRE chart read this cell live. Change it any time — no rebuild needed.");
+    applied.push("Inserted Settings!B22 (FIRE Target); currencies now B24/B25, ZPID map now A29:B45");
+  }
+
+  // --- Migration 2: hidden FX helper cells ---
+  if (ledger.getRange("M2").getFormula() && ledger.getRange("O3").getFormula()) {
+    skipped.push("Hidden helper cells M:O already present");
+  } else {
+    ledger.getRange("M1").setValue("⚙ INTERNAL — do not edit or delete")
+      .setFontColor(THEME.mutedText).setFontSize(8);
+    ledger.getRange("M2:M3").setNumberFormat("0.000000");
+    ledger.getRange("N2:O3").setNumberFormat("#,##0.00");
+    applied.push("Created hidden FX helper cells M1:O3");
+  }
+
+  // Formulas + column hiding are idempotent, so always reassert them.
+  const fixed = _ledgerFixedFormulas();
+  Object.keys(fixed).forEach(a1 => ledger.getRange(a1).setFormula(fixed[a1]));
+  ["E2", "E3", "I2", "I3"].forEach(a1 => ledger.getRange(a1).setNumberFormat("@"));
+  ledger.hideColumns(13, 3);   // M, N, O
+  applied.push("Reasserted KPI card formulas and text formatting");
+
+  _saveFormulaBaseline(ss);
+
+  if (!silent) {
+    const msg = ["🧭 Migration complete.", ""]
+      .concat(applied.length ? ["Applied:"].concat(applied.map(a => "  • " + a)) : [])
+      .concat(skipped.length ? ["", "Already up to date:"].concat(skipped.map(s => "  • " + s)) : [])
+      .join("\n");
+    SpreadsheetApp.getUi().alert(msg);
+  }
+
+  return { applied: applied, skipped: skipped };
+}
+
+/* ------------------------------------------------------------------ *
+ * DESTRUCTIVE OPERATION GUARDS
+ * ------------------------------------------------------------------ */
+
+/**
+ * Pure helper: does this ledger hold real user data?
+ * Sample rows shipped by First Time Setup don't count as real data.
+ *
+ * @param {Array<Array<*>>} ledgerRows - values from A7 onward
+ * @returns {boolean}
+ */
+function _hasUserLedgerData(ledgerRows) {
+  const sampleNames = DEFAULT_PORTFOLIO_DATA.map(r => String(r[0]));
+  for (let i = 0; i < (ledgerRows || []).length; i++) {
+    const name = String(ledgerRows[i][0] || "").trim();
+    if (!name) continue;
+    if (sampleNames.indexOf(name) === -1) return true;
+  }
+  return false;
+}
+
+/**
+ * Requires the user to type a confirmation phrase before a destructive rebuild.
+ * @param {string} phrase
+ * @param {string} warning
+ * @returns {boolean} whether the user confirmed
+ */
+function _confirmDestructive(phrase, warning) {
+  const ui = SpreadsheetApp.getUi();
+  const res = ui.prompt(
+    "⚠️ Destructive operation",
+    `${warning}\n\nThis CANNOT be undone from the menu. Recover via File > Version history if needed.\n\nType ${phrase} to proceed:`,
+    ui.ButtonSet.OK_CANCEL
+  );
+  return res.getSelectedButton() === ui.Button.OK &&
+         String(res.getResponseText()).trim().toUpperCase() === phrase;
+}
+
+/** Menu action: full rebuild, behind a typed confirmation. */
+function rebuildEverythingDestructive() {
+  if (!_confirmDestructive("ERASE",
+      "This ERASES every tab and replaces your ledger with the sample portfolio.")) {
+    SpreadsheetApp.getUi().alert("Cancelled — nothing was changed.");
+    return;
+  }
+  runFirstTimeSetup(null, false, true);
+}
+
+/** Menu action: rebuild only the Cash Flow tab, behind a typed confirmation. */
+function rebuildCashFlowDestructive() {
+  if (!_confirmDestructive("ERASE",
+      "This ERASES your entire expense ledger on the Cash Flow & Burn tab.")) {
+    SpreadsheetApp.getUi().alert("Cancelled — nothing was changed.");
+    return;
+  }
+  buildCashFlowTab();
 }

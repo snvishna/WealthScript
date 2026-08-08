@@ -12,6 +12,10 @@ function runAllTests() {
   test_abbrFmt();
   test_buildAbbrDisplayFormula();
   test_planRealEstateUpdates();
+  test_diffFormulaCounts();
+  test_hasUserLedgerData();
+  test_ledgerFixedFormulas();
+  test_formatHealthReport();
   test_generateInsight();
   test_validatePATFormat();
   test_buildGistUrl();
