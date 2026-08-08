@@ -61,7 +61,7 @@ function updateRealEstatePrices(ss_inject) {
 
   if (!apiKey || apiKey === "PASTE_KEY_HERE") return { updated: 0, skipped: ["RapidAPI key not configured"] };
 
-  const propData = configSheet.getRange("A28:B44").getValues();
+  const propData = configSheet.getRange("A29:B45").getValues();
   const properties = [];
   for (let i = 0; i < propData.length; i++) {
     if (propData[i][0] && propData[i][1]) {

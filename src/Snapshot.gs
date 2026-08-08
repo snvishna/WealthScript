@@ -14,8 +14,10 @@ function captureSnapshot(ss_inject, silent = false) {
 
   const netUSD = mainSheet.getRange("B2").getValue();
   const grossUSD = mainSheet.getRange("B3").getValue();
-  const netCAD = mainSheet.getRange("E2").getValue();
-  const netINR = mainSheet.getRange("H2").getValue();
+  // BUGFIX: E2/H2 are the *display* cells (H2 is actually a label, not a value).
+  // Read the hidden numeric backing cells so Snapshots always logs real numbers.
+  const netCAD = Number(mainSheet.getRange("N2").getValue()) || 0;
+  const netINR = Number(mainSheet.getRange("O2").getValue()) || 0;
   const dataRange = mainSheet.getRange("A7:J80").getValues(); 
   
   let liquidUSD = 0, lockedUSD = 0, totalReUSD = 0;
@@ -43,7 +45,9 @@ function captureSnapshot(ss_inject, silent = false) {
 
   const prevNetUSD = logSheet.getRange(2, 2).getValue(); 
   const prevLiquid = logSheet.getRange(2, 3).getValue();
-  let dollarDelta = "", pctGrowth = "", autoInsight = "Initial baseline snapshot established.", fireProgress = netUSD / 3000000; 
+  const fireTarget = Number(configSheet && configSheet.getRange("B22").getValue())
+    || DASHBOARD_CONFIG.fireTargetUSD || 3000000;
+  let dollarDelta = "", pctGrowth = "", autoInsight = "Initial baseline snapshot established.", fireProgress = netUSD / fireTarget;
 
   if (prevNetUSD && !isNaN(prevNetUSD)) {
     dollarDelta = netUSD - prevNetUSD;

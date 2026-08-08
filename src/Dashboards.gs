@@ -68,7 +68,9 @@ function updateVisualDashboards() {
     snapData.reverse(); // Snapshots are push-to-top, reverse for chronological order
 
     const forecastData = [["Date", "Actual Net Worth", "Projected Timeline"]];
-    const targetUSD = DASHBOARD_CONFIG.fireTargetUSD || 3000000;
+    const cfgSheet = ss.getSheetByName("Settings & Config");
+    const targetUSD = Number(cfgSheet && cfgSheet.getRange("B22").getValue())
+      || DASHBOARD_CONFIG.fireTargetUSD || 3000000;
 
     if (snapData.length > 1) {
       const firstRow = snapData[0];

@@ -94,10 +94,12 @@ const CLOUD_SYNC_CONFIG = {
 /**
  * DASHBOARD CONFIGURATION
  * Edit secondaryCurrencies to show your currencies in the top KPI cards.
+ * fireTargetUSD only SEEDS the Settings tab (B22) during First Time Setup.
+ * After setup, change the target in Settings & Config!B22 — the dashboard reads it live.
  * Supports any valid GOOGLEFINANCE code: EUR, GBP, AUD, JPY, MXN, SGD, etc.
  * Only the first two entries are rendered (layout: USD + 2 secondary cards).
  */
 const DASHBOARD_CONFIG = {
   secondaryCurrencies: ["CAD", "INR"], // ← Change these to your currencies
-  fireTargetUSD: 3000000,              // ← Your FIRE / net worth target in USD
+  fireTargetUSD: 10000000,             // ← Seeds Settings!B22 on first setup; edit B22 live thereafter
 };
