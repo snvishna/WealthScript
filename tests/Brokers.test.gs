@@ -292,3 +292,17 @@ function test_planBlockSyncShrinkNeverNegative() {
   ], "IBKR", 18, 20);
   Assert.equal(plan.shrinkRatio, 0, 'shrink: growing the block is never reported as shrinkage');
 }
+
+function test_clearedRowsMustKeepManagedFormulas() {
+  // Regression: sync used to clearContent() the whole row, wiping column F.
+  // F is a MANAGED range, so the next snapshot reported the drop as damage.
+  const managed = _managedRanges().map(r => r.label);
+  Assert.isTrue(managed.indexOf("Holdings Total Value column") > -1,
+    'clears: column F is managed, so clearing it trips the integrity check');
+
+  const f = _holdingsRowFormulas(42);
+  Assert.isTrue(f.F.indexOf('ISNUMBER(D42)') > -1,
+    'clears: a canonical F formula exists to restore a cleared row with');
+  Assert.isTrue(f.E.indexOf('ISBLANK(C42)') > -1,
+    'clears: canonical E renders empty on a blank ticker, so a cleared row stays visually blank');
+}
