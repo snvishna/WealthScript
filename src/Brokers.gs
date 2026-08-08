@@ -518,7 +518,19 @@ function syncIbkrPositions(ss_inject, silent = false) {
     sheet.getRange(w.row, 6).setFormula(_holdingsRowFormulas(w.row).F);
   });
 
-  plan.clears.forEach(r => sheet.getRange(r, 1, 1, 7).clearContent());
+  // Clear the DATA but restore the canonical formulas. Column F is a managed
+  // range, so a bare clearContent() drops the formula count and makes the next
+  // snapshot look like formula damage — the integrity check can't tell a
+  // deliberate clear from a destructive one, and shouldn't have to.
+  plan.clears.forEach(r => {
+    sheet.getRange(r, 1, 1, 4).clearContent();   // A-D: account, category, ticker, quantity
+    sheet.getRange(r, 7).clearContent();         // G: currency
+    sheet.getRange(r, 5).setFormula(_holdingsRowFormulas(r).E);
+    sheet.getRange(r, 6).setFormula(_holdingsRowFormulas(r).F);
+  });
+
+  // Sync legitimately reshapes the grid, so the accepted baseline moves with it.
+  _saveFormulaBaseline(ss);
 
   if (ui) {
     const headline = plan.bootstrap

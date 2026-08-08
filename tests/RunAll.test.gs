@@ -38,6 +38,7 @@ function runAllTests() {
   test_planBlockSyncRefusesWhenNoRunFits();
   test_planBlockSyncShrinkNeverNegative();
   test_headerAnnotationTolerated();
+  test_clearedRowsMustKeepManagedFormulas();
   test_isRealSecret();
   test_planSecretMigration();
   test_planSecretMigrationIsIdempotent();
