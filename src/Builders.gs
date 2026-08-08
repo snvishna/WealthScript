@@ -233,7 +233,7 @@ function buildPortfolioTracker(ss_inject) {
   sheet.getRange("A5:K5").setBackground(THEME.accentBar);
   sheet.setRowHeight(5, 3);
 
-  const headers = ["Account","Asset Class","Currency","Initial Capital","Current Value","Exchange Rate (to USD)","Tax Rate","Gross Worth (USD)","Net Worth (USD)","Status","Remarks"];
+  const headers = LEDGER_HEADERS;
   sheet.getRange(6, 1, 1, headers.length)
     .setValues([headers])
     .setBackground(THEME.headerBg).setFontColor(THEME.headerText)
@@ -326,7 +326,7 @@ function buildHoldingsTab(ss_inject) {
 
   sheet.setHiddenGridlines(true);
   
-  const headers = ["Account Name", "Asset Category", "Ticker Symbol", "Quantity", "Live Price", "Total Value"];
+  const headers = HOLDINGS_HEADERS;
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setBackground(THEME.headerBg).setFontColor(THEME.headerText).setFontWeight("bold");
 
   const sampleData = [

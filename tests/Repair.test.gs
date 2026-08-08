@@ -69,7 +69,7 @@ function test_classifyBrokerageRows() {
   const mk = (a, c, e, st) => [a, c, "", "", e, "", "", "", "", st];
   const rows = [
     mk("IBKR",        "Brokerage", "",     "Active"),   // row 7  - linked
-    mk("Schwab",      "Brokerage", 0,      "Inactive"), // row 8  - frozen 0, no holdings
+    mk("Schwab",      "Brokerage", 0,      "Active"),   // row 8  - frozen 0 on a LIVE account
     mk("Fidelity",    "Brokerage", 48250,  "Active"),   // row 9  - real manual number
     mk("Wealthfront", "Brokerage", 0,      "Active"),   // row 10 - no formula, HAS holdings
     mk("Chase",       "Cash",      12000,  "Active")    // row 11 - not holdings-linked
@@ -85,7 +85,7 @@ function test_classifyBrokerageRows() {
 
   Assert.equal(r.suspect.length, 1, 'classify: a frozen 0 is damage, not a manual balance');
   Assert.equal(r.suspect[0].account, "Schwab", 'classify: names the frozen-zero row');
-  Assert.equal(r.suspect[0].status, "Inactive", 'classify: status carried through for review');
+  Assert.equal(r.suspect[0].status, "Active", 'classify: status carried through for review');
 
   Assert.equal(r.unlinked.length, 1, 'classify: a real number is an intentional manual balance');
   Assert.equal(r.unlinked[0].account, "Fidelity", 'classify: manual balance left alone');
@@ -112,7 +112,7 @@ function test_classifyAcrossAssetClasses() {
     mk("IBKR",     "Brokerage",  "",     "Active"),   // 7  linked
     mk("Vanguard", "Retirement", 0,      "Active"),   // 8  retirement, HAS holdings -> broken
     mk("Coinbase", "Crypto",     0,      "Active"),   // 9  crypto, HAS holdings -> broken
-    mk("Schwab",   "Brokerage",  0,      "Inactive"), // 10 frozen 0, no holdings -> suspect
+    mk("Schwab",   "Brokerage",  0,      "Active"),   // 10 frozen 0 on a live account -> suspect
     mk("Fidelity", "Brokerage",  48250,  "Active"),   // 11 real manual number -> unlinked
     mk("Keybank",  "Cash",       9000,   "Inactive")  // 12 cash, never linked -> ignored
   ];
@@ -151,4 +151,54 @@ function test_holdingsPriceFormulaReservesCash() {
   Assert.isTrue(legacy.indexOf('=IFERROR(GOOGLEFINANCE(C18,"price"),0.0002)') === -1,
     'legacy: a fallback-price override is NOT upgradeable and must be preserved');
   Assert.isTrue(legacy.indexOf(f.E) === -1, 'legacy: current canonical is not listed as legacy');
+}
+
+function test_verifyHeaders() {
+  const good = _verifyHeaders(LEDGER_HEADERS.slice(), LEDGER_HEADERS);
+  Assert.isTrue(good.ok, 'headers: canonical row passes');
+
+  const shifted = LEDGER_HEADERS.slice();
+  shifted[9] = "Net Worth (USD)";                 // J duplicating I
+  const bad = _verifyHeaders(shifted, LEDGER_HEADERS);
+  Assert.isTrue(!bad.ok, 'headers: a duplicated header is caught');
+  Assert.equal(bad.problems.length, 1, 'headers: exactly one problem reported');
+  Assert.isTrue(bad.problems[0].indexOf('J should be "Status"') > -1, 'headers: names the column and expected value');
+
+  const inserted = ["Account", "SPURIOUS"].concat(LEDGER_HEADERS.slice(1));
+  Assert.isTrue(!_verifyHeaders(inserted, LEDGER_HEADERS).ok, 'headers: an inserted column is caught');
+
+  Assert.isTrue(!_verifyHeaders([], LEDGER_HEADERS).ok, 'headers: an empty row is caught, not treated as valid');
+  Assert.isTrue(_verifyHeaders(HOLDINGS_HEADERS.slice(), HOLDINGS_HEADERS).ok, 'headers: holdings row validates too');
+}
+
+function test_inactiveZeroIsDormantNotSuspect() {
+  const mk = (a, c, e, st) => [a, c, "", "", e, "", "", "", "", st];
+  const rows = [
+    mk("Schwab",     "Brokerage", 0, "Inactive"),  // row 7  - closed account
+    mk("Startengine","Brokerage", 0, "Active")     // row 8  - live account at 0
+  ];
+  const r = _classifyBrokerageRows(rows, {}, ["", ""], ["Brokerage"]);
+
+  Assert.equal(r.dormant.length, 1, 'dormant: an Inactive zero is not an error');
+  Assert.equal(r.dormant[0].account, "Schwab", 'dormant: names the closed account');
+  Assert.equal(r.suspect.length, 1, 'dormant: an ACTIVE zero is still flagged as damage');
+  Assert.equal(r.suspect[0].account, "Startengine", 'dormant: live account at 0 still surfaces');
+
+  const rep = _formatHealthReport({
+    healthy: true, hadBaseline: true, regressions: [], brokenLinks: [], suspect: [],
+    unlinked: [], dormant: r.dormant, orphaned: [], headerProblems: []
+  });
+  Assert.isTrue(rep.indexOf('✅') > -1, 'dormant: does not block a snapshot');
+  Assert.isTrue(rep.indexOf('harmless') > -1, 'dormant: explained rather than alarming');
+}
+
+function test_headerMismatchBlocksReport() {
+  const rep = _formatHealthReport({
+    healthy: false, hadBaseline: true, regressions: [], brokenLinks: [], suspect: [],
+    unlinked: [], dormant: [], orphaned: [],
+    headerProblems: ['Dashboard & Ledger row 6: column J should be "Status" but is "Net Worth (USD)"']
+  });
+  Assert.isTrue(rep.indexOf('🛑') > -1, 'headerBlock: reported as a hard stop');
+  Assert.isTrue(rep.indexOf('BLOCKED') > -1, 'headerBlock: states repair will not run');
+  Assert.isTrue(rep.indexOf('wrong column') > -1, 'headerBlock: explains the consequence');
 }
