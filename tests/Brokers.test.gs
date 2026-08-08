@@ -185,14 +185,22 @@ function test_planBlockSyncRefusesToStraddleAnotherAccount() {
   const rows = [
     ["IBKR", "", "AAPL", 40, "", "", ""],       // 18
     ["Robinhood", "", "GME", 10, "", "", ""],   // 19 - in the way
-    ["IBKR", "", "AMZN", 1100, "", "", ""]      // 20
+    ["IBKR", "", "AMZN", 1100, "", "", ""],     // 20
+    ["", "", "", "", "", "", ""],               // 21
+    ["", "", "", "", "", "", ""]                // 22
   ];
   const plan = _planBlockSync(rows, [
     { ticker: "AAPL", quantity: 40 }, { ticker: "AMZN", quantity: 1100 }, { ticker: "TSLA", quantity: 5 }
-  ], "IBKR", 18, 100);
+  ], "IBKR", 18, 22);
 
-  Assert.isTrue(!plan.ok, 'straddle: refuses rather than overwrite a foreign row');
-  Assert.isTrue(plan.reason.indexOf("another account") > -1, 'straddle: says why');
+  // The block can't grow in place, so it relocates below rather than writing
+  // over row 19. Either way, the foreign row is never touched.
+  Assert.isTrue(plan.ok, 'straddle: relocates instead of refusing outright');
+  Assert.isTrue(plan.relocated, 'straddle: flagged as a move');
+  Assert.isTrue(!plan.writes.some(w => w.row === 19), 'straddle: never writes over a foreign row');
+  Assert.equal(plan.startRow, 20, 'straddle: reuses the second owned row as the new anchor');
+  Assert.equal(plan.clears.length, 1, 'straddle: only the genuinely vacated row is cleared');
+  Assert.equal(plan.clears[0], 18, 'straddle: clears the row left behind, not the one reused');
 }
 
 function test_planBlockSyncFlagsLargeShrink() {
@@ -220,4 +228,67 @@ function test_headerAnnotationTolerated() {
   wrong[9] = "Net Worth (USD)";
   Assert.isTrue(!_verifyHeaders(wrong, LEDGER_HEADERS).ok,
     'annotation: a genuinely wrong header still fails');
+}
+
+
+function test_planBlockSyncBootstrapsEmptyAccount() {
+  // No row anywhere carries "IBKR" — the first sync must still work.
+  const rows = [
+    ["Robinhood", "", "GME", 10, "", "", ""],   // 18
+    ["", "", "", "", "", "", ""],               // 19
+    ["", "", "", "", "", "", ""],               // 20
+    ["", "", "", "", "", "", ""]                // 21
+  ];
+  const plan = _planBlockSync(rows, [
+    { ticker: "AAPL", quantity: 40 }, { ticker: "AMZN", quantity: 1100 }
+  ], "IBKR", 18, 21);
+
+  Assert.isTrue(plan.ok, 'bootstrap: an account with no existing rows still syncs');
+  Assert.isTrue(plan.bootstrap, 'bootstrap: flagged so the report says "Created" not "Rebuilt"');
+  Assert.equal(plan.startRow, 19, 'bootstrap: lands in the first free run, after the other account');
+  Assert.equal(plan.writes.length, 2, 'bootstrap: every position written');
+  Assert.equal(plan.clears.length, 0, 'bootstrap: nothing to clear');
+}
+
+function test_planBlockSyncRelocatesWhenOutgrown() {
+  // IBKR sits at row 18 with one free row after it, then another account.
+  const rows = [
+    ["IBKR", "", "AAPL", 40, "", "", ""],       // 18
+    ["Robinhood", "", "GME", 10, "", "", ""],   // 19 - blocks growth
+    ["", "", "", "", "", "", ""],               // 20
+    ["", "", "", "", "", "", ""],               // 21
+    ["", "", "", "", "", "", ""]                // 22
+  ];
+  const plan = _planBlockSync(rows, [
+    { ticker: "AAPL", quantity: 40 }, { ticker: "AMZN", quantity: 1100 }, { ticker: "TSLA", quantity: 5 }
+  ], "IBKR", 18, 22);
+
+  Assert.isTrue(plan.ok, 'relocate: grows into free space instead of refusing');
+  Assert.isTrue(plan.relocated, 'relocate: flagged so the user is told the block moved');
+  Assert.equal(plan.startRow, 20, 'relocate: moved past the blocking account');
+  Assert.equal(plan.clears.length, 1, 'relocate: the old anchor row is cleared');
+  Assert.equal(plan.clears[0], 18, 'relocate: clears the vacated row');
+  Assert.isTrue(!plan.writes.some(w => w.row === 19), 'relocate: never writes over the other account');
+}
+
+function test_planBlockSyncRefusesWhenNoRunFits() {
+  const rows = [
+    ["Robinhood", "", "GME", 10, "", "", ""],   // 18
+    ["", "", "", "", "", "", ""],               // 19
+    ["Coinbase", "", "BTC", 1, "", "", ""]      // 20
+  ];
+  const plan = _planBlockSync(rows, [
+    { ticker: "AAPL", quantity: 40 }, { ticker: "AMZN", quantity: 1100 }
+  ], "IBKR", 18, 20);
+
+  Assert.isTrue(!plan.ok, 'noroom: refuses when no run is long enough');
+  Assert.isTrue(plan.reason.indexOf("consecutive rows") > -1, 'noroom: explains what is needed');
+}
+
+function test_planBlockSyncShrinkNeverNegative() {
+  const rows = [["IBKR", "", "AAPL", 40, "", "", ""], ["", "", "", "", "", "", ""], ["", "", "", "", "", "", ""]];
+  const plan = _planBlockSync(rows, [
+    { ticker: "AAPL", quantity: 40 }, { ticker: "AMZN", quantity: 1100 }, { ticker: "TSLA", quantity: 5 }
+  ], "IBKR", 18, 20);
+  Assert.equal(plan.shrinkRatio, 0, 'shrink: growing the block is never reported as shrinkage');
 }

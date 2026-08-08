@@ -134,6 +134,11 @@ function _normaliseFlexCash(currency, amount) {
  *  - the target block must be contiguous and consist only of rows this account
  *    already owns plus blank rows, so another account is never overwritten
  *
+ * An account with no existing rows is bootstrapped into the first writable run
+ * long enough to hold it — nothing has to be laid out by hand first. If the
+ * account's current position can't fit the feed, the block relocates to a run
+ * that can, and the old rows are cleared.
+ *
  * @param {Array<Array<*>>} existingRows - A..G values starting at firstRow
  * @param {Array<Object>} positions - normalised specs
  * @param {string} accountName
@@ -150,46 +155,63 @@ function _planBlockSync(existingRows, positions, accountName, firstRow, lastRow)
                 "nothing is a failed request, not an emptied account.");
   }
 
-  const owned = [], blank = [];
+  const ownedSet = {}, blankSet = {};
+  const owned = [];
   for (let i = 0; i < existingRows.length; i++) {
     const row = firstRow + i;
     const a = String(existingRows[i][0] || "").trim();
-    if (a === acct) owned.push({ row: row, ticker: String(existingRows[i][2] || "").trim() });
-    else if (!a) blank.push(row);
-  }
-
-  if (!owned.length) return fail(`No rows on the Holdings tab carry the account name "${acct}".`);
-
-  const startRow = owned[0].row;
-  const ownedRows = {};
-  owned.forEach(o => { ownedRows[o.row] = true; });
-  const blankRows = {};
-  blank.forEach(r => { blankRows[r] = true; });
-
-  // The destination must be a contiguous run we are allowed to write into.
-  const needed = positions.length;
-  for (let r = startRow; r < startRow + needed; r++) {
-    if (r > lastRow) return fail(`Need ${needed} rows from row ${startRow}, but the grid ends at ${lastRow}.`);
-    if (!ownedRows[r] && !blankRows[r]) {
-      return fail(`Row ${r} belongs to another account, so the ${acct} block cannot be ` +
-                  `rewritten in place. Move the ${acct} rows together and re-run.`);
+    if (a === acct) {
+      owned.push({ row: row, ticker: String(existingRows[i][2] || "").trim() });
+      ownedSet[row] = true;
+    } else if (!a) {
+      blankSet[row] = true;
     }
   }
 
+  const needed = positions.length;
+  const writable = r => !!(ownedSet[r] || blankSet[r]);
+
+  /** Length of the writable run starting at `start`. */
+  const runFrom = start => {
+    let n = 0;
+    for (let r = start; r <= lastRow && writable(r); r++) n++;
+    return n;
+  };
+
+  // Prefer to rewrite in place, anchored on the account's first existing row.
+  // Otherwise look for any writable run long enough — which is also how an
+  // account with NO existing rows gets bootstrapped.
+  let startRow = null, relocated = false;
+
+  if (owned.length && runFrom(owned[0].row) >= needed) {
+    startRow = owned[0].row;
+  } else {
+    for (let r = firstRow; r <= lastRow - needed + 1; r++) {
+      if (runFrom(r) >= needed) { startRow = r; relocated = owned.length > 0; break; }
+    }
+  }
+
+  if (startRow === null) {
+    return fail(`Need ${needed} consecutive rows for "${acct}" but the Holdings tab has ` +
+                `no run that long. Free up space (or add rows) and re-run.`);
+  }
+
+  const bootstrap = owned.length === 0;
+  const endRow = startRow + needed - 1;
   const writes = positions.map((spec, i) => ({ row: startRow + i, spec: spec }));
 
-  // Owned rows past the new block are stale and get cleared.
+  // Owned rows outside the new block are stale and get cleared.
   const clears = [], removed = [];
   owned.forEach(o => {
-    if (o.row < startRow + needed) return;
+    if (o.row >= startRow && o.row <= endRow) return;
     clears.push(o.row);
     if (o.ticker) removed.push(o.ticker);
   });
 
-  const shrinkRatio = owned.length ? (owned.length - needed) / owned.length : 0;
+  const shrinkRatio = owned.length ? Math.max(0, (owned.length - needed) / owned.length) : 0;
 
-  return { ok: true, reason: "", startRow: startRow, writes: writes,
-           clears: clears, removed: removed, shrinkRatio: shrinkRatio };
+  return { ok: true, reason: "", startRow: startRow, writes: writes, clears: clears,
+           removed: removed, shrinkRatio: shrinkRatio, bootstrap: bootstrap, relocated: relocated };
 }
 
 /**
@@ -499,9 +521,18 @@ function syncIbkrPositions(ss_inject, silent = false) {
   plan.clears.forEach(r => sheet.getRange(r, 1, 1, 7).clearContent());
 
   if (ui) {
-    const lines = [`✅ Rebuilt the ${accountName} block from IBKR.`, "",
-      `Rows written: ${plan.writes.length} (from row ${plan.startRow})`,
+    const headline = plan.bootstrap
+      ? `✅ Created the ${accountName} block from IBKR.`
+      : (plan.relocated
+          ? `✅ Rebuilt and MOVED the ${accountName} block from IBKR.`
+          : `✅ Rebuilt the ${accountName} block from IBKR.`);
+    const lines = [headline, "",
+      `Rows written: ${plan.writes.length} (rows ${plan.startRow}–${plan.startRow + plan.writes.length - 1})`,
       `Stale rows cleared: ${plan.clears.length}`];
+    if (plan.relocated) {
+      lines.push("", "The block moved because it outgrew its previous position.",
+                     "Check that the Dashboard row for this account still totals correctly.");
+    }
     if (plan.removed.length) {
       lines.push("", "No longer held:", ...plan.removed.slice(0, 15).map(t => "  • " + t));
     }

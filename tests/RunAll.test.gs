@@ -33,6 +33,10 @@ function runAllTests() {
   test_planBlockSyncRewritesInPlace();
   test_planBlockSyncRefusesToStraddleAnotherAccount();
   test_planBlockSyncFlagsLargeShrink();
+  test_planBlockSyncBootstrapsEmptyAccount();
+  test_planBlockSyncRelocatesWhenOutgrown();
+  test_planBlockSyncRefusesWhenNoRunFits();
+  test_planBlockSyncShrinkNeverNegative();
   test_headerAnnotationTolerated();
   test_inactiveZeroIsDormantNotSuspect();
   test_verifyHeaders();
