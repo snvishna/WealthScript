@@ -141,9 +141,32 @@ function _ledgerRowFormulas(r) {
  */
 function _holdingsRowFormulas(r) {
   return {
-    E: `=IF(ISBLANK(C${r}), "", GOOGLEFINANCE(C${r}, "price"))`,
+    // "CASH" is itself a live ticker on US markets, so a bare
+    // GOOGLEFINANCE(C, "price") on a cash row returns a real equity quote
+    // instead of erroring — silently multiplying the balance by ~87x. Reserve
+    // it explicitly. Non-USD cash rows override this cell with an FX lookup;
+    // repairFormulas() preserves such overrides.
+    E: `=IF(ISBLANK(C${r}), "", IF(UPPER(TRIM(C${r}))="CASH", 1, IFERROR(GOOGLEFINANCE(C${r}, "price"), NA())))`,
     F: `=IF(AND(ISNUMBER(D${r}), ISNUMBER(E${r})), D${r} * E${r}, "")`
   };
+}
+
+/**
+ * Previous canonical price formulas, safe for repairFormulas() to upgrade.
+ *
+ * Anything NOT in this list and not the current canonical is treated as a
+ * deliberate user override and left untouched — an FX lookup on a foreign
+ * currency row, a fallback price for an unquotable ticker, a pinned option mark.
+ *
+ * @param {number} r - 1-indexed row
+ * @returns {Array<string>}
+ */
+function _legacyHoldingsPriceFormulas(r) {
+  return [
+    `=IF(ISBLANK(C${r}), "", GOOGLEFINANCE(C${r}, "price"))`,
+    `=IF(ISBLANK(C${r}),"",GOOGLEFINANCE(C${r},"price"))`,
+    `=IFERROR(GOOGLEFINANCE(C${r},"price"),NA())`
+  ];
 }
 
 /**

@@ -19,6 +19,7 @@ function runAllTests() {
   test_healthReportSeparatesErrorsFromNotices();
   test_classifyBrokerageRows();
   test_classifyAcrossAssetClasses();
+  test_holdingsPriceFormulaReservesCash();
   test_generateInsight();
   test_validatePATFormat();
   test_buildGistUrl();
