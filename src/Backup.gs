@@ -53,7 +53,7 @@ function _buildEnrichedBackup(ss) {
 
 /** Manual trigger: runs both Gist and Drive backups with UI alerts. */
 function forceBackup(ss_inject) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _resolveSpreadsheet(ss_inject);
   backupToGitHub(ss, false);
   backupToGoogleDrive(ss, false);
 }
@@ -106,7 +106,8 @@ function _isGistConfigured(configSheet, ss_inject) {
  * @returns {boolean} Whether the backup was attempted and succeeded.
  */
 function backupToGitHub(ss_inject, silent = false) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  silent = _resolveSilent(silent, _isInteractive());
+  const ss = _resolveSpreadsheet(ss_inject);
   const configSheet = ss.getSheetByName("Settings & Config");
 
   if (!_isGistConfigured(configSheet, ss)) {
@@ -163,8 +164,9 @@ function backupToGitHub(ss_inject, silent = false) {
  * @returns {{success: boolean, folder: GoogleAppsScript.Drive.Folder}} Result object
  */
 function backupToGoogleDrive(ss_inject, silent = false) {
+  silent = _resolveSilent(silent, _isInteractive());
   const FOLDER_NAME = "WealthScript \u2014 Backups";
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _resolveSpreadsheet(ss_inject);
 
   try {
     const backupData = _buildEnrichedBackup(ss);

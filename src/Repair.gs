@@ -145,7 +145,7 @@ function _auditBrokerageLinks(ss) {
  * @returns {{healthy: boolean, regressions: Array, brokenLinks: Array, counts: Object, hadBaseline: boolean}}
  */
 function auditFormulaHealth(ss_inject) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _resolveSpreadsheet(ss_inject);
   const counts = _countManagedFormulas(ss);
   const links = _auditBrokerageLinks(ss);
 
@@ -284,7 +284,8 @@ function _auditHeaders(ss) {
  * @returns {{restored: number, preserved: number, details: Array<string>}}
  */
 function repairFormulas(ss_inject, silent = false) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  silent = _resolveSilent(silent, _isInteractive());
+  const ss = _resolveSpreadsheet(ss_inject);
   const ledger = ss.getSheetByName("Dashboard & Ledger");
   const holdings = ss.getSheetByName("Brokerage Holdings");
 
@@ -416,7 +417,8 @@ function repairFormulas(ss_inject, silent = false) {
  * @returns {{applied: Array<string>, skipped: Array<string>}}
  */
 function migrateSheetLayout(ss_inject, silent = false) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  silent = _resolveSilent(silent, _isInteractive());
+  const ss = _resolveSpreadsheet(ss_inject);
   const cfg = ss.getSheetByName("Settings & Config");
   const ledger = ss.getSheetByName("Dashboard & Ledger");
 
@@ -578,7 +580,7 @@ function getSecret(name, ss_inject) {
   const stored = PropertiesService.getDocumentProperties().getProperty(spec.prop);
   if (stored) return stored;
 
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _resolveSpreadsheet(ss_inject);
   const cfg = ss.getSheetByName("Settings & Config");
   if (!cfg) return "";
 
@@ -598,7 +600,7 @@ function setSecret(name, value, ss_inject) {
 
   PropertiesService.getDocumentProperties().setProperty(spec.prop, String(value).trim());
 
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _resolveSpreadsheet(ss_inject);
   const cfg = ss.getSheetByName("Settings & Config");
   if (cfg) cfg.getRange(spec.cell).setValue(SECRET_MOVED_NOTICE);
 }
@@ -643,7 +645,8 @@ function _planSecretMigration(specs, cellValues, propValues) {
  * @returns {{moved: Array<string>, alreadySecure: Array<string>, notSet: Array<string>, conflict: Array<string>}}
  */
 function migrateSecretsToProperties(ss_inject, silent = false) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  silent = _resolveSilent(silent, _isInteractive());
+  const ss = _resolveSpreadsheet(ss_inject);
   const cfg = ss.getSheetByName("Settings & Config");
   const props = PropertiesService.getDocumentProperties();
 

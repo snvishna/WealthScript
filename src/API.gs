@@ -50,7 +50,8 @@ function _planRealEstateUpdates(ledgerRows, fetched, firstRow) {
  * @returns {{updated: number, skipped: Array<string>}}
  */
 function updateRealEstatePrices(ss_inject) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _resolveSpreadsheet(ss_inject);
+  const interactive = _isInteractive();
   const sheet = ss.getSheetByName("Dashboard & Ledger");
   const configSheet = ss.getSheetByName("Settings & Config");
 

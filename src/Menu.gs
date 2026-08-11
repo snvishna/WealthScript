@@ -56,7 +56,7 @@ function onOpen() {
  * @param {boolean} [force=false] - Bypass the populated-ledger guard
  */
 function runFirstTimeSetup(ss_inject, silent = false, force = false) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _resolveSpreadsheet(ss_inject);
 
   // Every builder below calls sheet.clear(). Refuse to run against a populated
   // ledger unless explicitly forced via the Danger Zone menu.
