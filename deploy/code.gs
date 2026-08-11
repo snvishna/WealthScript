@@ -129,6 +129,49 @@ const SECRET_SPECS = [
 
 /** Text left in a cell once its secret has moved to secure storage. */
 const SECRET_MOVED_NOTICE = "🔒 Stored securely (not in this sheet)";
+
+
+/* ------------------------------------------------------------------ *
+ * EXECUTION CONTEXT
+ * ------------------------------------------------------------------ */
+
+/**
+ * Resolves the spreadsheet to operate on.
+ *
+ * Time-driven and installable triggers invoke their handler with an EVENT
+ * OBJECT as the first argument. Functions written as `f(ss_inject)` then did
+ * `_resolveSpreadsheet(ss_inject)`, took the truthy event,
+ * and died on `ss.getSheetByName is not a function`. Duck-type instead of
+ * trusting truthiness.
+ *
+ * @param {*} maybe - a Spreadsheet, a trigger event object, or undefined
+ * @returns {SpreadsheetApp.Spreadsheet}
+ */
+function _resolveSpreadsheet(maybe) {
+  return (maybe && typeof maybe.getSheetByName === "function")
+    ? maybe
+    : SpreadsheetApp.getActiveSpreadsheet();
+}
+
+/**
+ * True when a UI is attached. SpreadsheetApp.getUi() throws in a trigger
+ * context, so any alert() there is an uncaught exception rather than a dialog.
+ * @returns {boolean}
+ */
+function _isInteractive() {
+  try { return !!SpreadsheetApp.getUi(); } catch (e) { return false; }
+}
+
+/**
+ * Pure helper: should this run suppress UI?
+ * Explicitly-silent callers stay silent; everything else follows the context.
+ * @param {boolean} requested
+ * @param {boolean} interactive
+ * @returns {boolean}
+ */
+function _resolveSilent(requested, interactive) {
+  return requested === true || interactive === false;
+}
 /**
  * ==========================================
  * FORMULAS — SINGLE SOURCE OF TRUTH
@@ -414,7 +457,7 @@ function onOpen() {
  * @param {boolean} [force=false] - Bypass the populated-ledger guard
  */
 function runFirstTimeSetup(ss_inject, silent = false, force = false) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _resolveSpreadsheet(ss_inject);
 
   // Every builder below calls sheet.clear(). Refuse to run against a populated
   // ledger unless explicitly forced via the Danger Zone menu.
@@ -739,7 +782,8 @@ function _planRealEstateUpdates(ledgerRows, fetched, firstRow) {
  * @returns {{updated: number, skipped: Array<string>}}
  */
 function updateRealEstatePrices(ss_inject) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _resolveSpreadsheet(ss_inject);
+  const interactive = _isInteractive();
   const sheet = ss.getSheetByName("Dashboard & Ledger");
   const configSheet = ss.getSheetByName("Settings & Config");
 
@@ -802,7 +846,7 @@ function updateRealEstatePrices(ss_inject) {
   return { updated: written, skipped: plan.skipped };
 }
 function buildSettingsTab(ss_inject) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _resolveSpreadsheet(ss_inject);
   let sheet = ss.getSheetByName("Settings & Config");
   if (!sheet) sheet = ss.insertSheet("Settings & Config");
   else sheet.clear();
@@ -947,7 +991,7 @@ function _buildAbbrDisplayFormula(settingsCell, valueCell) {
 }
 
 function buildPortfolioTracker(ss_inject) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _resolveSpreadsheet(ss_inject);
   let sheet = ss.getSheetByName("Dashboard & Ledger");
   if (!sheet) sheet = ss.insertSheet("Dashboard & Ledger");
   else sheet.clear();
@@ -1122,7 +1166,7 @@ function buildPortfolioTracker(ss_inject) {
  * 3. Builds the Brokerage Holdings Tab 
  */
 function buildHoldingsTab(ss_inject) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _resolveSpreadsheet(ss_inject);
   let sheet = ss.getSheetByName("Brokerage Holdings");
   if (!sheet) sheet = ss.insertSheet("Brokerage Holdings");
   else sheet.clear(); 
@@ -1184,7 +1228,7 @@ function buildSnapshotTab() {
  * 5. Builds the Cash Flow & Burn Tab
  */
 function buildCashFlowTab(ss_inject) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _resolveSpreadsheet(ss_inject);
   let sheet = ss.getSheetByName("💸 Cash Flow & Burn");
   if (!sheet) sheet = ss.insertSheet("💸 Cash Flow & Burn");
   else sheet.clear();
@@ -1451,7 +1495,8 @@ function updateVisualDashboards() {
  * @param {boolean} [silent=false] - Suppress UI reports
  */
 function captureSnapshot(ss_inject, silent = false) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  silent = _resolveSilent(silent, _isInteractive());
+  const ss = _resolveSpreadsheet(ss_inject);
   const mainSheet = ss.getSheetByName("Dashboard & Ledger");
   const logSheet = ss.getSheetByName("Snapshots");
   const configSheet = ss.getSheetByName("Settings & Config");
@@ -1628,7 +1673,7 @@ function _buildEnrichedBackup(ss) {
 
 /** Manual trigger: runs both Gist and Drive backups with UI alerts. */
 function forceBackup(ss_inject) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _resolveSpreadsheet(ss_inject);
   backupToGitHub(ss, false);
   backupToGoogleDrive(ss, false);
 }
@@ -1681,7 +1726,8 @@ function _isGistConfigured(configSheet, ss_inject) {
  * @returns {boolean} Whether the backup was attempted and succeeded.
  */
 function backupToGitHub(ss_inject, silent = false) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  silent = _resolveSilent(silent, _isInteractive());
+  const ss = _resolveSpreadsheet(ss_inject);
   const configSheet = ss.getSheetByName("Settings & Config");
 
   if (!_isGistConfigured(configSheet, ss)) {
@@ -1738,8 +1784,9 @@ function backupToGitHub(ss_inject, silent = false) {
  * @returns {{success: boolean, folder: GoogleAppsScript.Drive.Folder}} Result object
  */
 function backupToGoogleDrive(ss_inject, silent = false) {
+  silent = _resolveSilent(silent, _isInteractive());
   const FOLDER_NAME = "WealthScript \u2014 Backups";
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _resolveSpreadsheet(ss_inject);
 
   try {
     const backupData = _buildEnrichedBackup(ss);
@@ -1947,7 +1994,7 @@ function _auditBrokerageLinks(ss) {
  * @returns {{healthy: boolean, regressions: Array, brokenLinks: Array, counts: Object, hadBaseline: boolean}}
  */
 function auditFormulaHealth(ss_inject) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _resolveSpreadsheet(ss_inject);
   const counts = _countManagedFormulas(ss);
   const links = _auditBrokerageLinks(ss);
 
@@ -2086,7 +2133,8 @@ function _auditHeaders(ss) {
  * @returns {{restored: number, preserved: number, details: Array<string>}}
  */
 function repairFormulas(ss_inject, silent = false) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  silent = _resolveSilent(silent, _isInteractive());
+  const ss = _resolveSpreadsheet(ss_inject);
   const ledger = ss.getSheetByName("Dashboard & Ledger");
   const holdings = ss.getSheetByName("Brokerage Holdings");
 
@@ -2218,7 +2266,8 @@ function repairFormulas(ss_inject, silent = false) {
  * @returns {{applied: Array<string>, skipped: Array<string>}}
  */
 function migrateSheetLayout(ss_inject, silent = false) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  silent = _resolveSilent(silent, _isInteractive());
+  const ss = _resolveSpreadsheet(ss_inject);
   const cfg = ss.getSheetByName("Settings & Config");
   const ledger = ss.getSheetByName("Dashboard & Ledger");
 
@@ -2380,7 +2429,7 @@ function getSecret(name, ss_inject) {
   const stored = PropertiesService.getDocumentProperties().getProperty(spec.prop);
   if (stored) return stored;
 
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _resolveSpreadsheet(ss_inject);
   const cfg = ss.getSheetByName("Settings & Config");
   if (!cfg) return "";
 
@@ -2400,7 +2449,7 @@ function setSecret(name, value, ss_inject) {
 
   PropertiesService.getDocumentProperties().setProperty(spec.prop, String(value).trim());
 
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  const ss = _resolveSpreadsheet(ss_inject);
   const cfg = ss.getSheetByName("Settings & Config");
   if (cfg) cfg.getRange(spec.cell).setValue(SECRET_MOVED_NOTICE);
 }
@@ -2445,7 +2494,8 @@ function _planSecretMigration(specs, cellValues, propValues) {
  * @returns {{moved: Array<string>, alreadySecure: Array<string>, notSet: Array<string>, conflict: Array<string>}}
  */
 function migrateSecretsToProperties(ss_inject, silent = false) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  silent = _resolveSilent(silent, _isInteractive());
+  const ss = _resolveSpreadsheet(ss_inject);
   const cfg = ss.getSheetByName("Settings & Config");
   const props = PropertiesService.getDocumentProperties();
 
@@ -2937,7 +2987,8 @@ function _fetchFlexStatement() {
  * @returns {{written: number, cleared: number, notes: Array<string>}}
  */
 function syncIbkrPositions(ss_inject, silent = false) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  silent = _resolveSilent(silent, _isInteractive());
+  const ss = _resolveSpreadsheet(ss_inject);
   const sheet = ss.getSheetByName("Brokerage Holdings");
   const props = PropertiesService.getDocumentProperties();
   const accountName = props.getProperty(FLEX_PROP_ACCOUNT);

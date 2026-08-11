@@ -129,3 +129,46 @@ const SECRET_SPECS = [
 
 /** Text left in a cell once its secret has moved to secure storage. */
 const SECRET_MOVED_NOTICE = "🔒 Stored securely (not in this sheet)";
+
+
+/* ------------------------------------------------------------------ *
+ * EXECUTION CONTEXT
+ * ------------------------------------------------------------------ */
+
+/**
+ * Resolves the spreadsheet to operate on.
+ *
+ * Time-driven and installable triggers invoke their handler with an EVENT
+ * OBJECT as the first argument. Functions written as `f(ss_inject)` then did
+ * `_resolveSpreadsheet(ss_inject)`, took the truthy event,
+ * and died on `ss.getSheetByName is not a function`. Duck-type instead of
+ * trusting truthiness.
+ *
+ * @param {*} maybe - a Spreadsheet, a trigger event object, or undefined
+ * @returns {SpreadsheetApp.Spreadsheet}
+ */
+function _resolveSpreadsheet(maybe) {
+  return (maybe && typeof maybe.getSheetByName === "function")
+    ? maybe
+    : SpreadsheetApp.getActiveSpreadsheet();
+}
+
+/**
+ * True when a UI is attached. SpreadsheetApp.getUi() throws in a trigger
+ * context, so any alert() there is an uncaught exception rather than a dialog.
+ * @returns {boolean}
+ */
+function _isInteractive() {
+  try { return !!SpreadsheetApp.getUi(); } catch (e) { return false; }
+}
+
+/**
+ * Pure helper: should this run suppress UI?
+ * Explicitly-silent callers stay silent; everything else follows the context.
+ * @param {boolean} requested
+ * @param {boolean} interactive
+ * @returns {boolean}
+ */
+function _resolveSilent(requested, interactive) {
+  return requested === true || interactive === false;
+}

@@ -425,7 +425,8 @@ function _fetchFlexStatement() {
  * @returns {{written: number, cleared: number, notes: Array<string>}}
  */
 function syncIbkrPositions(ss_inject, silent = false) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  silent = _resolveSilent(silent, _isInteractive());
+  const ss = _resolveSpreadsheet(ss_inject);
   const sheet = ss.getSheetByName("Brokerage Holdings");
   const props = PropertiesService.getDocumentProperties();
   const accountName = props.getProperty(FLEX_PROP_ACCOUNT);

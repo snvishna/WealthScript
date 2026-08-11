@@ -5,7 +5,8 @@
  * @param {boolean} [silent=false] - Suppress UI reports
  */
 function captureSnapshot(ss_inject, silent = false) {
-  const ss = ss_inject || SpreadsheetApp.getActiveSpreadsheet();
+  silent = _resolveSilent(silent, _isInteractive());
+  const ss = _resolveSpreadsheet(ss_inject);
   const mainSheet = ss.getSheetByName("Dashboard & Ledger");
   const logSheet = ss.getSheetByName("Snapshots");
   const configSheet = ss.getSheetByName("Settings & Config");
